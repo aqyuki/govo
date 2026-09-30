@@ -1,0 +1,149 @@
+name: checks
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  gomod:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - id: setup-go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Cache Go modules and build outputs
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-go-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-go-${{ steps.setup-go.outputs.go-version }}-
+            ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-go-
+
+      - name: Verify root go.mod and go.sum are tidy
+        run: go mod tidy -diff
+
+  lint:
+    needs:
+      - gomod
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - id: setup-go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - id: golangci-lint-version
+        uses: ./.github/actions/tool-version
+        with:
+          tool: golangci-lint
+
+      - name: Cache Go modules, build outputs, and golangci-lint results
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-go-${{ steps.setup-go.outputs.go-version }}-golangci-lint-${{ steps.golangci-lint-version.outputs.version }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-go-${{ steps.setup-go.outputs.go-version }}-golangci-lint-${{ steps.golangci-lint-version.outputs.version }}-
+            ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-go-${{ steps.setup-go.outputs.go-version }}-
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v${{ steps.golangci-lint-version.outputs.version }}
+          skip-cache: true
+
+  test:
+    needs:
+      - gomod
+    name: test (Go ${{ matrix.go }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The minimum version from go.mod and the next release. go vet
+        # passes different module information to vet tools in each.
+        include:
+          - go: "1.26"
+            coverage: true
+          - go: "1.27"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - id: setup-go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ matrix.go }}
+          cache: false
+
+      - name: Cache Go modules and build outputs
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-go-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-go-${{ steps.setup-go.outputs.go-version }}-
+            ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-go-
+
+      - name: Run tests
+        env:
+          # Use the Go version selected by the matrix, not a toolchain switch.
+          GOTOOLCHAIN: local
+        run: go test ./... -covermode=atomic -coverprofile=coverage.out
+
+      - name: Run go vet
+        env:
+          GOTOOLCHAIN: local
+        run: go vet ./...
+
+      - name: Upload coverage report
+        if: matrix.coverage
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage
+          path: coverage.out
+          if-no-files-found: error
+          retention-days: 1
+
+  coverage:
+    needs:
+      - test
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download coverage report
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: coverage
+
+      - name: Report coverage
+        uses: k1LoW/octocov-action@a167dc0dee441b7ffc45e1b862ab55ec0d87f278 # v1.5.2
+        with:
+          version: v0.75.12

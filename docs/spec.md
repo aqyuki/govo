@@ -1,0 +1,156 @@
+# govo Detection Specification
+
+## Purpose
+
+`govo` is a linter for Go value objects. It detects direct construction and direct extraction of the underlying representation outside the file that declares the type. It also detects implicit construction from untyped constants regardless of the file. The type declaration file is trusted as the boundary for implementing domain rules: explicit conversions and declarations of typed constants are permitted there.
+
+```go
+//govo:protect
+type Code string
+
+//govo:factory
+func NewCode(s string) (Code, error) {
+    if !validFormat(s) {
+        var zero Code
+        return zero, errors.New("invalid code")
+    }
+    return Code(s), nil
+}
+
+//govo:converter
+func (c Code) String() string {
+    return string(c)
+}
+```
+
+Code outside the type declaration file should use an API such as `NewCode` or `Code.String` to construct a `Code` or extract its underlying representation. Explicit conversions are permitted in the type declaration file, including in functions without a directive. `govo` does not prove that the validation logic or public APIs in that file are correct.
+
+## Eligible types
+
+In the initial version, a **defined type** is eligible for protection if its underlying type is a Go basic type (boolean, numeric, or string). It remains eligible when the right-hand side of its declaration names another defined type, provided its underlying type is basic. A type alias is not treated as a new protected type; operations through an alias of a protected type are detected as operations on the original protected type.
+
+Types with slice, map, or array underlying types are outside the initial scope. Thus, `type Codes []Code` and the array-based `type UserID uuid.UUID` cannot be protected in the initial version.
+
+Types with struct, interface, channel, function, or pointer underlying types are deliberately excluded. Protecting those types is distinct from applying the rules to **protected types that appear within them or in operations involving them**. For example, the normal `Code` rules apply when assigning a `Code` to a struct field, sending one on a `chan Code`, or converting a value obtained by dereferencing a `*Code`. Even if `Codes` itself is not protected, an operation that makes an element of `Codes{"ABC"}` a `Code` is detected.
+
+## Trusted boundary
+
+The declaration of a protected type and its domain rules belong in one Go file. That file permits **explicit conversions to the protected type** and **explicit conversions from the protected type to another concrete type**. Direct conversions in either direction are reported in other files, including files in the same package. A conversion such as `Code(code)` from the same protected type does not cross the type boundary and is permitted in any file.
+
+Prohibited extraction means explicitly converting a protected type to another concrete type, as in `string(code)`, `[]byte(code)`, or `RawCode(code)`. Passing a protected value to an interface it implements is not treated as extracting its underlying representation; both explicit and implicit conversions to interfaces are permitted. This includes `var x any = code` and `any(code)`, as well as `var s fmt.Stringer = code` and `fmt.Stringer(code)`. Calling a public method through an interface is also permitted.
+
+Each `const` specification that declares a constant of the protected type is permitted in the type declaration file, including specifications that inherit their type or expression from a preceding specification. Examples include `const (A Code = "A"; B = "B")` and, for a numeric protected type, `const (A Number = iota; B; C)`. Developers are responsible for the validity of constant values as part of the domain rules in that file. The same declarations are reported in other files.
+
+Apart from these exceptions, implicit conversion of an untyped constant or other untyped expression to a protected type and operations or comparisons between such an expression and a protected type are reported even in the type declaration file. For example, `var c Code = "ABC"`, `code == "ABC"`, and `return x == y` in a function returning a protected boolean type are reported. By contrast, `Code("INVALID")` is permitted in any function in that file. Developers are responsible for the correctness of code within the trusted file.
+
+`factory` and `converter` mark APIs exposed to callers. They do not restrict permission for direct conversions to marked functions, nor does a marker alone guarantee correct validation or encapsulation.
+
+These markers are optional; a protected type need not have either one. They may be attached only to exported functions or methods in the same file as the protected type's declaration.
+
+## Detected operations
+
+With `Code` as the protected type, the following table gives representative examples. In the initial version, `GOVO001` covers ordinary uses in which an untyped constant is treated as a protected type, regardless of syntax. Operations and comparisons are classified under `GOVO003`, without an additional `GOVO001` at the same location. The exceptions described below apply to zero values, operations through type parameters, and declarations of protected typed constants in the type declaration file.
+
+| Category | Examples | Condition |
+| --- | --- | --- |
+| Explicit construction | `Code(s)`, `Code("ABC")` | Report outside the type declaration file; conversions from the same type are permitted |
+| Explicit extraction | `string(code)`, `[]byte(code)`, `RawCode(code)` | Report outside the type declaration file when converting to another concrete type; conversions to the same type or an interface are permitted |
+| Typed constant declaration | `const CodeABC Code = "ABC"`, specifications that inherit a type or expression | Report outside the type declaration file |
+| Implicit construction | `var c Code = "ABC"`, `UseCode("ABC")`, `return "ABC"` | Report in any file |
+| Composite literals and similar uses | `[]Code{"ABC"}`, `map[Code]int{"ABC": 1}`, `S{Code: "ABC"}` | Report when an untyped constant is used as a `Code` |
+| Other value transfers | `append(codes, "ABC")`, `ch <- "ABC"`, `m["ABC"]`, `*p = "ABC"` (where `p` is `*Code`) | Report when an untyped constant is used as a `Code` |
+| Comparisons and operations | `code == "ABC"`, `code + "X"`, `code += "X"`, `switch code { case "ABC": }` | Report when an untyped constant is treated as the protected type |
+| Increment and decrement | `n++`, `n--` (where `n` is a protected numeric type) | Report in any file, because they add or subtract the untyped constant `1` |
+
+A named untyped constant such as `const raw = "ABC"` is also covered when assigned or passed to a protected type, including one declared in another package and referenced as `pkg.Raw`. A call of the built-in `min`, `max`, `real`, `imag`, or `complex` whose arguments are all untyped constants is itself an untyped constant and is covered in the same way, as in `var n Number = min(1, 2)`. Other constant expressions with typed results, such as `len("ABC")`, are not untyped constants. A typed constant declaration such as `const defaultCode Code = raw`, including one that inherits its type or expression from a preceding specification, is permitted only in the type declaration file. `NewCode("ABC")` is outside the rule because its parameter has type `string`. Comparisons and operations between `Code` values are not detected in the initial version.
+
+The count of a shift operation never takes the type of the shifted operand, so `n << 1`, `n >> 2`, `n <<= 1`, and `n >>= 1` are not reported.
+
+Besides untyped constants, some non-constant expressions are untyped and take the type of their context, so they are treated in the same way. The result of a comparison is an untyped boolean even when its operands are typed, and a shift of an untyped constant by a non-constant count, such as `1 << u`, is untyped. For a protected `Flag` with a boolean underlying type and a protected `Number` with a numeric one, `var f Flag = int(1) == int(1)`, `var f Flag = x == y`, and `var n Number = 1 << u` are reported as `GOVO001`, and `f == (x == y)` and `n + (1 << u)` as `GOVO003`. An explicit conversion such as `Flag(x == y)` or `Number(1 << u)` is a construction from a non-protected value, not a conversion from the same type, so it is reported as `GOVO001` outside the type declaration file. Diagnostics say "untyped constant" or "untyped expression" accordingly.
+
+In the initial version, diagnostics for value operations are grouped by meaning, rather than by syntax. Diagnostics concerning the declaration or use of directives have a separate rule.
+
+| Rule ID | Rule | Scope |
+| --- | --- | --- |
+| `GOVO001` | Invalid construction | Explicit conversions to a protected type, declarations of protected typed constants in other files, and implicit construction from untyped constants at ordinary use sites |
+| `GOVO002` | Extraction of the underlying representation | Explicit conversions from a protected type to another concrete type |
+| `GOVO003` | Operations and comparisons with untyped constants | Comparisons, binary operations, compound assignments, `switch` cases, and similar operations in which an untyped constant is treated as a protected type |
+| `GOVO004` | Directive declarations and usage | Unknown or invalid directives, unused `ignore` directives, and missing reasons for `ignore` directives when reason checking is enabled |
+
+A single conversion expression does not receive overlapping diagnostics. For example, if both types in `OtherCode(code)` are protected, construction of the destination and extraction from the source are evaluated against their respective type declaration files. If both violate the rules, only `GOVO001` is reported. If only construction violates the rules, `GOVO001` is reported; if only extraction violates them, `GOVO002` is reported.
+
+Operations through an alias of a protected type are evaluated as operations on the original protected type. The same rules apply to protected types declared in another package within the same module. This includes unexported protected types, whose values can reach other packages through exported functions, fields, and aliases.
+
+## Directives
+
+| Directive | Purpose |
+| --- | --- |
+| `//govo:protect` | Protects the individual type declaration immediately following it; it does not apply to an entire `type (...)` group |
+| `//govo:factory` | Marks a public API that constructs a protected type |
+| `//govo:converter` | Marks a public API that extracts the underlying representation of a protected type |
+| `//govo:ignore` | Suppresses diagnostics for specified operations |
+
+`protect` takes no arguments and attaches to the individual type declaration immediately after it. Within a `type (...)` group, each type to be protected needs its own directive. `factory` and `converter` attach to the immediately following exported function or method declaration and name a protected type declared in the same file. The type name may be omitted if the file declares only one protected type; it is required if the file declares more than one. If the marked declaration is in a different file from the type declaration, `GOVO004` is reported and the marker is ignored.
+
+When a function or method handles multiple protected types, the standard form lists their names on one line, separated by spaces. Multiple directive lines are also accepted and treated as a set of target types.
+
+```go
+//govo:factory Code RegionCode
+func NewCodes(s string) (Code, RegionCode, error) { /* ... */ }
+
+//govo:converter Code
+//govo:converter RegionCode
+func DescribeCodes(c Code, r RegionCode) string { /* ... */ }
+```
+
+Each type named in a `factory` directive is checked separately. If none of the function's or method's return values has exactly that protected type, `GOVO004` is reported for the missing type and only that type's marker is ignored. A return signature such as `(Code, error)` is valid; `*Code` and `[]Code` do not count as direct returns of `Code`.
+
+Each type named in a `converter` directive is also checked separately. The directive is valid when the receiver or an argument has that protected type or a pointer to it. Because some APIs write the converted value to a destination passed as an argument, return types are unrestricted. `GOVO004` is reported for a type that fails this check, and only that type's marker is ignored. These checks verify the shape of the API, not the correctness of validation or conversion logic.
+
+Unknown `govo` directives, extra arguments, and directives that cannot be attached to a target are reported as `GOVO004`, and the invalid directive is ignored. Such diagnostics do not invalidate other valid directives at the same location.
+
+An `ignore` directive may specify comma-separated rule IDs; omitting them targets all rules. A reason uses the same `// reason` form as golangci-lint.
+
+```go
+//govo:ignore GOVO001 // Required for compatibility with an external specification
+UseCode("ABC")
+
+UseCode("ABC"); _ = code == "ABC" //govo:ignore GOVO001,GOVO003 // Temporary migration exception
+```
+
+A standalone comment line applies to the immediately following statement or declaration, even when that statement or declaration spans multiple lines. A trailing comment applies to all operations on its physical line. If multiple operations share that line, all are covered. A standalone comment immediately before an `if`, `for`, `switch`, or `select` applies to operations in its header, such as conditions and initializers, but not to statements inside its block. Before a `case` or `default` clause, it applies only to the clause's expressions or communication, not to the statements after the colon. A label does not change the covered statement: a comment before `L: for ...` applies to the header of that `for`. A standalone comment does not extend into the body of a function literal in the covered statement or declaration either, as in `defer func() { ... }()`. There is no block-wide suppression.
+
+The following statement or declaration is searched for only in the innermost declaration list, `const`/`var`/`type` group, block, or clause that contains the standalone comment. A standalone comment at the end of a block, or inside an expression such as between the arguments of a multiline call, has no target and is reported as `GOVO004`.
+
+Diagnostics are located at the syntax that causes them: the destination type name for an explicit conversion, the declared identifier for a protected typed constant, and the start of the constant expression for implicit conversion from an untyped constant or an operation or comparison involving one, and the `++` or `--` operator for an increment or decrement. If a statement has multiple offending constants, each receives a diagnostic. A standalone comment suppresses diagnostics in the header or expression of the following statement or declaration, but does not extend into the body of an `if` or `for`. A trailing comment suppresses every diagnostic whose cause is on its physical line; this includes the body of a single-line `if` when it is on that line. In a multiline call, a trailing comment on the closing parenthesis line does not suppress diagnostics for arguments on other lines.
+
+By default, omitting the reason from an `ignore` directive produces no diagnostic. When `ignore.missing-reason` is set to `error`, a missing reason is reported as `GOVO004`. Only missing reasons are disabled by default; diagnostics for unused `ignore` directives and invalid directives still apply. If rule IDs are listed, usage is checked separately for each ID, and an ID that suppresses no diagnostics is reported as unused. If IDs are omitted, the directive is reported as unused only when it suppresses no diagnostics at all.
+
+## Configuration
+
+The configuration file format is YAML. Configuration is resolved in this order: (1) a file explicitly specified by `-config`, then (2) `.govo.yaml` directly in the tool's current working directory. A relative `-config` path is resolved against that directory. If an explicitly specified file does not exist, this is an error; there is no fallback to `.govo.yaml`. Without `-config`, parent and child directories are not searched, and the defaults apply when `.govo.yaml` is absent. Under `go vet -vettool`, automatic configuration discovery and relative paths are based on each analyzed package's directory. To share one configuration across packages, pass an absolute path to `-config`. Invalid YAML or invalid values for known keys cause an error; unknown keys are ignored. The standalone command and `go vet -vettool` use the same discovery order.
+
+```yaml
+tests: true
+ignore:
+  missing-reason: off
+```
+
+`tests` controls whether `_test.go` files are checked and defaults to `true`. `ignore.missing-reason` accepts `off` or `error` and defaults to `off`. govo has no warning level: every diagnostic, including `GOVO004`, is an error. Both the standalone `govo` command and `go vet -vettool` fail if any diagnostic is emitted.
+
+## Exclusions and guarantees
+
+- Go zero values are permitted: `var c Code` and `new(Code)` are not prohibited. Consequently, `govo` does not guarantee that every `Code` has passed validation in `NewCode`.
+- Construction or extraction through type parameters, and detection by tracing instantiations of generic functions, are outside the initial scope. The ordinary rules still apply to a direct conversion such as `Code(s)` written inside a generic function.
+- Direct writes through libraries or runtime mechanisms such as JSON, databases, and reflection are outside the detection scope.
+- Types with slice, map, array, struct, interface, channel, function, or pointer underlying types are ineligible for protection. Operations between protected values are outside the detection scope.
+
+The initial version of `govo` detects the specified bypasses in ordinary Go code. It does not prevent every construction path involving zero values, type parameters, or runtime mechanisms.
+
+## Adoption and analysis scope
+
+Only types marked with `//govo:protect` are protected. There is no separate baseline feature or feature that inserts `//govo:ignore` directives in bulk.
+
+Generated Go files, packages under `vendor`, packages from external modules, and the standard library are excluded from analysis. Generated files are identified with `go/ast.IsGenerated`, which recognizes the standard Go `// Code generated ... DO NOT EDIT.` comment before the package clause. A package is treated as vendored when its directory is `vendor/<import path>`, so a main-module package that merely has a directory named `vendor` in its path is still analyzed. A protected type, exported or not, declared in a dependency package within the same module is also recognized as protected at its use sites. A type marked with `//govo:protect` in an external module is not recognized as protected at its use sites.
+
+With `go.work`, multiple modules treated as main modules may be analyzed. Under Go 1.26, `go vet -vettool` may also analyze an unversioned module outside the main module.

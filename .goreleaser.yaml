@@ -1,0 +1,58 @@
+version: 2
+project_name: govo
+
+builds:
+  - id: govo
+    main: ./cmd/govo
+    binary: govo
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: govo
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  use: git
+  sort: asc
+  groups:
+    - title: Breaking Changes
+      regexp: '^.*[a-z]+(\([^)]*\))?!:'
+      order: 0
+    - title: Features
+      regexp: '^.*feat(\([^)]*\))?:'
+      order: 1
+    - title: Fixes
+      regexp: '^.*fix(\([^)]*\))?:'
+      order: 2
+    - title: Maintenance
+      order: 3
+
+release:
+  github:
+    owner: aqyuki
+    name: govo
+  use_existing_draft: true
+  replace_existing_artifacts: true
