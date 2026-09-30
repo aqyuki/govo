@@ -38,6 +38,11 @@ func (s *analyzerState) analyzeNode(root ast.Node, signature *types.Signature) {
 		case *ast.AssignStmt:
 			switch n.Tok {
 			case token.ASSIGN, token.DEFINE:
+				if len(n.Lhs) > 1 && len(n.Rhs) == 1 {
+					s.implicitTuple(n.Rhs[0], s.typesOf(n.Lhs))
+					break
+				}
+
 				for i, rhs := range n.Rhs {
 					if i < len(n.Lhs) {
 						s.implicit(rhs, s.pass.TypesInfo.TypeOf(n.Lhs[i]), ruleConstruction)
@@ -56,6 +61,18 @@ func (s *analyzerState) analyzeNode(root ast.Node, signature *types.Signature) {
 
 		case *ast.ReturnStmt:
 			if signature != nil {
+				results := signature.Results()
+				if results.Len() > 1 && len(n.Results) == 1 {
+					targets := make([]types.Type, results.Len())
+					for i := range targets {
+						targets[i] = results.At(i).Type()
+					}
+
+					s.implicitTuple(n.Results[0], targets)
+
+					break
+				}
+
 				for i, expr := range n.Results {
 					if i < signature.Results().Len() {
 						s.implicit(expr, signature.Results().At(i).Type(), ruleConstruction)
@@ -108,25 +125,52 @@ func (s *analyzerState) call(c *ast.CallExpr) {
 	}
 
 	params := sig.Params()
-
-	for i, arg := range c.Args {
+	paramType := func(i int, ellipsis bool) types.Type {
 		index := i
 		if sig.Variadic() && i >= params.Len()-1 {
 			index = params.Len() - 1
 		}
 
 		if index < 0 || index >= params.Len() {
-			continue
+			return nil
 		}
 
 		t := params.At(index).Type()
-		if sig.Variadic() && index == params.Len()-1 && !c.Ellipsis.IsValid() {
+		if sig.Variadic() && index == params.Len()-1 && !ellipsis {
 			if sl, ok := t.(*types.Slice); ok {
 				t = sl.Elem()
 			}
 		}
 
-		s.implicit(arg, t, ruleConstruction)
+		return t
+	}
+
+	builtin := s.builtin(c.Fun)
+
+	if len(c.Args) == 1 && builtin == nil {
+		if tuple, ok := s.pass.TypesInfo.TypeOf(c.Args[0]).(*types.Tuple); ok {
+			targets := make([]types.Type, tuple.Len())
+			for i := range targets {
+				targets[i] = paramType(i, false)
+			}
+
+			s.implicitTuple(c.Args[0], targets)
+
+			return
+		}
+	}
+
+	for i, arg := range c.Args {
+		t := paramType(i, c.Ellipsis.IsValid())
+		if t == nil {
+			continue
+		}
+
+		if elementCopy(builtin, c, i) {
+			s.implicitUntyped(arg, t, ruleConstruction)
+		} else {
+			s.implicit(arg, t, ruleConstruction)
+		}
 	}
 }
 
@@ -155,6 +199,19 @@ func (s *analyzerState) conversion(c *ast.CallExpr, dest types.Type) {
 func (s *analyzerState) valueDecl(d *ast.GenDecl) {
 	for _, spec := range d.Specs {
 		v := spec.(*ast.ValueSpec)
+
+		if d.Tok == token.VAR && len(v.Names) > 1 && len(v.Values) == 1 {
+			targets := make([]types.Type, len(v.Names))
+			for i, name := range v.Names {
+				if obj := s.pass.TypesInfo.Defs[name]; obj != nil {
+					targets[i] = obj.Type()
+				}
+			}
+
+			s.implicitTuple(v.Values[0], targets)
+
+			continue
+		}
 
 		for i, name := range v.Names {
 			var t types.Type
@@ -197,6 +254,16 @@ func (s *analyzerState) composite(c *ast.CompositeLit) {
 	// go/types records *T for a literal whose &T is elided, as in []*T{{...}}.
 	if ptr, ok := t.Underlying().(*types.Pointer); ok {
 		t = ptr.Elem()
+	}
+
+	// An empty literal holds no elements, like the zero value or make.
+	if p := s.protected(t); p != nil && p.file != s.current && len(c.Elts) > 0 {
+		pos := c.Lbrace
+		if c.Type != nil {
+			pos = c.Type.Pos()
+		}
+
+		s.issue(pos, ruleConstruction, fmt.Sprintf("direct construction of protected type %s", p.name.Name()), s.current)
 	}
 
 	switch u := t.Underlying().(type) {
@@ -287,7 +354,58 @@ func (s *analyzerState) valueSwitch(sw *ast.SwitchStmt) {
 	}
 }
 
+// implicit checks expr where its value is implicitly converted to target.
 func (s *analyzerState) implicit(expr ast.Expr, target types.Type, rule string) {
+	s.implicitUntyped(expr, target, rule)
+	s.assignment(expr.Pos(), s.pass.TypesInfo.TypeOf(expr), target)
+}
+
+// implicitTuple checks the values of a multi-valued expression, such as a
+// call or a comma-ok expression, where they are assigned to targets.
+func (s *analyzerState) implicitTuple(expr ast.Expr, targets []types.Type) {
+	tuple, ok := s.pass.TypesInfo.TypeOf(expr).(*types.Tuple)
+	if !ok {
+		return
+	}
+
+	for i := 0; i < tuple.Len() && i < len(targets); i++ {
+		s.assignment(expr.Pos(), tuple.At(i).Type(), targets[i])
+	}
+}
+
+// assignment checks the implicit conversion of a value of type source to
+// target. A value of an unnamed array, slice, or map type is assignable to
+// a defined type with the same underlying type and vice versa, so it
+// constructs or extracts a protected type without a conversion. As with an
+// explicit conversion, the type declaration file is trusted.
+func (s *analyzerState) assignment(pos token.Pos, source, target types.Type) {
+	if source == nil || target == nil || types.Identical(source, target) || !types.Identical(source.Underlying(), target.Underlying()) {
+		return
+	}
+
+	if p := s.protected(target); p != nil {
+		if p.file != s.current {
+			s.issue(pos, ruleConstruction, fmt.Sprintf("implicit construction of protected type %s", p.name.Name()), s.current)
+		}
+
+		return
+	}
+
+	if p := s.protected(source); p != nil && p.file != s.current {
+		s.issue(pos, ruleExtraction, fmt.Sprintf("implicit extraction from protected type %s", p.name.Name()), s.current)
+	}
+}
+
+func (s *analyzerState) typesOf(exprs []ast.Expr) []types.Type {
+	ts := make([]types.Type, len(exprs))
+	for i, expr := range exprs {
+		ts[i] = s.pass.TypesInfo.TypeOf(expr)
+	}
+
+	return ts
+}
+
+func (s *analyzerState) implicitUntyped(expr ast.Expr, target types.Type, rule string) {
 	p := s.protected(target)
 	if p == nil || !s.untyped(expr) {
 		return
@@ -364,13 +482,8 @@ func (s *analyzerState) untypedBuiltinCall(c *ast.CallExpr) bool {
 		return false
 	}
 
-	id, ok := ast.Unparen(c.Fun).(*ast.Ident)
-	if !ok {
-		return false
-	}
-
-	builtin, ok := s.pass.TypesInfo.Uses[id].(*types.Builtin)
-	if !ok {
+	builtin := s.builtin(c.Fun)
+	if builtin == nil {
 		return false
 	}
 
@@ -387,4 +500,44 @@ func (s *analyzerState) untypedBuiltinCall(c *ast.CallExpr) bool {
 	}
 
 	return len(c.Args) > 0
+}
+
+// elementCopy reports whether the i-th argument of the built-in call c only
+// supplies elements to copy, as the arguments of copy and the argument
+// spread by append(s, x...) do. Element operations are outside the rules,
+// so such an argument is not reported merely because its type shares the
+// underlying type of the parameter. Other arguments, such as the value in
+// append(lists, codes), are converted as a whole and checked as usual.
+func elementCopy(builtin *types.Builtin, c *ast.CallExpr, i int) bool {
+	if builtin == nil {
+		return false
+	}
+
+	switch builtin.Name() {
+	case "copy":
+		return true
+	case "append":
+		return c.Ellipsis.IsValid() && i == len(c.Args)-1
+	}
+
+	return false
+}
+
+// builtin returns the built-in function that fun denotes, if any, including
+// those of package unsafe.
+func (s *analyzerState) builtin(fun ast.Expr) *types.Builtin {
+	var id *ast.Ident
+
+	switch f := ast.Unparen(fun).(type) {
+	case *ast.Ident:
+		id = f
+	case *ast.SelectorExpr:
+		id = f.Sel
+	default:
+		return nil
+	}
+
+	builtin, _ := s.pass.TypesInfo.Uses[id].(*types.Builtin)
+
+	return builtin
 }
