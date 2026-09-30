@@ -14,14 +14,22 @@ import (
 // Analyzer checks conversions and untyped constants involving //govo:protect types.
 var Analyzer = newAnalyzer()
 
+// Rule IDs for protected types have the GOV prefix and rule IDs for
+// directives the GOVD prefix, so each category is numbered independently.
 const (
-	ruleConstruction = "GOVO001"
-	ruleExtraction   = "GOVO002"
-	ruleOperation    = "GOVO003"
-	ruleDirective    = "GOVO004"
+	ruleConstruction = "GOV001"
+	ruleExtraction   = "GOV002"
+	ruleOperation    = "GOV003"
+
+	ruleInvalidDirective = "GOVD001"
+	ruleUnusedIgnore     = "GOVD002"
+	ruleMissingReason    = "GOVD003"
 )
 
-var knownRules = []string{ruleConstruction, ruleExtraction, ruleOperation, ruleDirective}
+var knownRules = []string{
+	ruleConstruction, ruleExtraction, ruleOperation,
+	ruleInvalidDirective, ruleUnusedIgnore, ruleMissingReason,
+}
 
 type protectedFact struct{}
 
@@ -199,12 +207,12 @@ func (s *analyzerState) collectProtect(f *ast.File) {
 
 			obj, ok := s.pass.TypesInfo.Defs[ts.Name].(*types.TypeName)
 			if !ok || obj.IsAlias() {
-				s.issue(ts.Name.Pos(), ruleDirective, "protect requires a defined type", f)
+				s.issue(ts.Name.Pos(), ruleInvalidDirective, "protect requires a defined type", f)
 				continue
 			}
 
 			if !eligibleUnderlying(obj.Type()) {
-				s.issue(ts.Name.Pos(), ruleDirective, "protect requires a basic, array, slice, or map underlying type", f)
+				s.issue(ts.Name.Pos(), ruleInvalidDirective, "protect requires a basic, array, slice, or map underlying type", f)
 				continue
 			}
 

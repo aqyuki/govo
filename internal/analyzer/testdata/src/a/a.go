@@ -27,13 +27,13 @@ const raw = "X"
 type Alias = Code
 
 //govo:protect
-type Pointer unsafe.Pointer // want "GOVO004"
+type Pointer unsafe.Pointer // want "GOVD001"
 
 //govo:protect
-type Record struct{ C Code } // want "GOVO004"
+type Record struct{ C Code } // want "GOVD001"
 
 //govo:protect
-type Channel chan Code // want "GOVO004"
+type Channel chan Code // want "GOVD001"
 
 //govo:factory Code
 func NewOther(s string) Code { return Code(s) }
@@ -42,21 +42,21 @@ func NewOther(s string) Code { return Code(s) }
 func ConvertCode(c Code) string { return string(c) }
 
 func local(c Code) bool {
-	var wrong Code = "X" // want "GOVO001"
-	var named Code = raw // want "GOVO001"
+	var wrong Code = "X" // want "GOV001"
+	var named Code = raw // want "GOV001"
 	_ = wrong
 	_ = named
-	return c == "X" // want "GOVO003"
+	return c == "X" // want "GOV003"
 }
 
 //govo:protect
 type Flag bool // want Flag:"&{}"
 
-//govo:protect	extra // want "GOVO004"
+//govo:protect	extra // want "GOVD001"
 type Tabbed string
 
 func tabs(c Code) {
-	//govo:ignore	GOVO003	// tab separated
+	//govo:ignore	GOV003	// tab separated
 	_ = c == "X"
 }
 
@@ -73,5 +73,5 @@ const Raw = "X"
 //govo:factory Flag
 func trusted(x, y int) Flag {
 	_ = Flag(x == y)
-	return x == y // want "GOVO001: untyped expression used as protected type Flag"
+	return x == y // want "GOV001: untyped expression used as protected type Flag"
 }

@@ -41,15 +41,15 @@ func (c Codes) Strings() []Code {
 
 //govo:factory Codes ID Set
 func literals() (Codes, ID, Set) {
-	_ = Codes{"X"} // want "GOVO001: untyped constant used as protected type Code"
+	_ = Codes{"X"} // want "GOV001: untyped constant used as protected type Code"
 	return Codes{NewCode("X")}, ID{1, 2, 3, 4}, Set{"a": true}
 }
 
 // Unmarked functions in the type declaration file are not trusted.
 func unmarkedLiterals() {
-	_ = Codes{NewCode("X")} // want "GOVO001: direct construction of protected type Codes"
-	_ = ID{1, 2, 3, 4}      // want "GOVO001: direct construction of protected type ID"
+	_ = Codes{NewCode("X")} // want "GOV001: direct construction of protected type Codes"
+	_ = ID{1, 2, 3, 4}      // want "GOV001: direct construction of protected type ID"
 	_ = Set{}
 }
 
-func pair() ([]Code, error) { return Codes{}, nil } // want `GOVO002: implicit extraction from protected type Codes; use a //govo:converter function$`
+func pair() ([]Code, error) { return Codes{}, nil } // want `GOV002: implicit extraction from protected type Codes; use a //govo:converter function$`

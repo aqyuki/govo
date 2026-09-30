@@ -59,18 +59,18 @@ func (s *analyzerState) collectDirectives(f *ast.File) {
 			switch command {
 			case directiveProtect:
 				if args != "" {
-					s.issue(comment.Pos(), ruleDirective, "protect does not accept arguments", f)
+					s.issue(comment.Pos(), ruleInvalidDirective, "protect does not accept arguments", f)
 				}
 
 				if !s.protectComments[comment] {
-					s.issue(comment.Pos(), ruleDirective, "protect is not attached to a type declaration", f)
+					s.issue(comment.Pos(), ruleInvalidDirective, "protect is not attached to a type declaration", f)
 				}
 			case directiveFactory, directiveConverter:
 				s.validateAPI(f, comment, command, args)
 			case directiveIgnore:
 				s.parseIgnore(f, comment, args)
 			default:
-				s.issue(comment.Pos(), ruleDirective, fmt.Sprintf("unknown govo directive %q", command), f)
+				s.issue(comment.Pos(), ruleInvalidDirective, fmt.Sprintf("unknown govo directive %q", command), f)
 			}
 		}
 	}
@@ -92,7 +92,7 @@ func (s *analyzerState) validateAPI(f *ast.File, comment *ast.Comment, command, 
 	}
 
 	if fn == nil {
-		s.issue(comment.Pos(), ruleDirective, command+" requires a function or method", f)
+		s.issue(comment.Pos(), ruleInvalidDirective, command+" requires a function or method", f)
 		return
 	}
 
@@ -105,7 +105,7 @@ func (s *analyzerState) validateAPI(f *ast.File, comment *ast.Comment, command, 
 	} else if len(protected) == 1 {
 		names = []string{protected[0].name.Name()}
 	} else {
-		s.issue(comment.Pos(), ruleDirective, command+" requires a type name unless this file declares exactly one protected type", f)
+		s.issue(comment.Pos(), ruleInvalidDirective, command+" requires a type name unless this file declares exactly one protected type", f)
 		return
 	}
 
@@ -114,7 +114,7 @@ func (s *analyzerState) validateAPI(f *ast.File, comment *ast.Comment, command, 
 	for _, name := range names {
 		i := slices.IndexFunc(protected, func(p *protectedType) bool { return p.name.Name() == name })
 		if i < 0 {
-			s.issue(comment.Pos(), ruleDirective, fmt.Sprintf("%s: %s is not a protected type declared in this file", command, name), f)
+			s.issue(comment.Pos(), ruleInvalidDirective, fmt.Sprintf("%s: %s is not a protected type declared in this file", command, name), f)
 			continue
 		}
 
@@ -126,14 +126,14 @@ func (s *analyzerState) validateAPI(f *ast.File, comment *ast.Comment, command, 
 
 		if command == directiveFactory {
 			if !returnsType(sig, t) {
-				s.issue(comment.Pos(), ruleDirective, fmt.Sprintf("%s: %s is not returned by this API", command, name), f)
+				s.issue(comment.Pos(), ruleInvalidDirective, fmt.Sprintf("%s: %s is not returned by this API", command, name), f)
 				continue
 			}
 
 			s.grantFor(fn).construct[protected[i]] = true
 		} else {
 			if !acceptsType(sig, t) {
-				s.issue(comment.Pos(), ruleDirective, fmt.Sprintf("%s: %s is not accepted by this API", command, name), f)
+				s.issue(comment.Pos(), ruleInvalidDirective, fmt.Sprintf("%s: %s is not accepted by this API", command, name), f)
 				continue
 			}
 
@@ -205,10 +205,14 @@ func (s *analyzerState) parseIgnore(file *ast.File, comment *ast.Comment, args s
 	} else {
 		for id := range strings.SplitSeq(ids, ",") {
 			id = strings.TrimSpace(id)
-			if slices.Contains(knownRules, id) {
+			switch {
+			case id == ruleUnusedIgnore:
+				// Unused ignore directives are found after suppression.
+				s.issue(comment.Pos(), ruleInvalidDirective, fmt.Sprintf("ignore rule %s cannot be suppressed", id), file)
+			case slices.Contains(knownRules, id):
 				ignore.rules[id] = true
-			} else {
-				s.issue(comment.Pos(), ruleDirective, fmt.Sprintf("unknown ignore rule %q", id), file)
+			default:
+				s.issue(comment.Pos(), ruleInvalidDirective, fmt.Sprintf("unknown ignore rule %q", id), file)
 			}
 		}
 	}
@@ -216,13 +220,13 @@ func (s *analyzerState) parseIgnore(file *ast.File, comment *ast.Comment, args s
 	if !ignore.trailing {
 		ignore.target = nextIgnoreTarget(file, comment)
 		if ignore.target == nil {
-			s.issue(comment.Pos(), ruleDirective, "ignore is not followed by a statement or declaration", file)
+			s.issue(comment.Pos(), ruleInvalidDirective, "ignore is not followed by a statement or declaration", file)
 			return
 		}
 	}
 
 	if ignore.reason == "" && s.config.Ignore.MissingReason == missingReasonError {
-		s.issue(comment.Pos(), ruleDirective, "ignore directive has no reason", file)
+		s.issue(comment.Pos(), ruleMissingReason, "ignore directive has no reason", file)
 	}
 
 	s.ignore = append(s.ignore, ignore)
@@ -352,12 +356,12 @@ func (s *analyzerState) reportIssues() {
 		}
 
 		if ignore.all && len(ignore.used) == 0 {
-			s.pass.Reportf(ignore.pos, "%s: unused ignore directive", ruleDirective)
+			s.pass.Reportf(ignore.pos, "%s: unused ignore directive", ruleUnusedIgnore)
 		}
 
 		for _, rule := range slices.Sorted(maps.Keys(ignore.rules)) {
 			if !ignore.used[rule] {
-				s.pass.Reportf(ignore.pos, "%s: unused ignore rule %s", ruleDirective, rule)
+				s.pass.Reportf(ignore.pos, "%s: unused ignore rule %s", ruleUnusedIgnore, rule)
 			}
 		}
 	}

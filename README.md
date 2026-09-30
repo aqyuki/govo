@@ -45,10 +45,10 @@ if err != nil {
 }
 raw := code.String()       // Allowed: retrieve through the public API
 
-_ = Code("ABC")           // GOVO001: direct construction; use a //govo:factory function
-var bypass Code = "ABC"   // GOVO001: implicit construction from an untyped constant
-_ = string(code)          // GOVO002: direct extraction; use a //govo:converter function
-_ = code == "ABC"         // GOVO003: comparison with an untyped constant
+_ = Code("ABC")           // GOV001: direct construction; use a //govo:factory function
+var bypass Code = "ABC"   // GOV001: implicit construction from an untyped constant
+_ = string(code)          // GOV002: direct extraction; use a //govo:converter function
+_ = code == "ABC"         // GOV003: comparison with an untyped constant
 ```
 
 Direct construction is allowed only in functions marked with `factory`, and direct conversion to the internal representation only in functions marked with `converter`. Implicit construction from untyped constants, as well as comparisons and operations involving them, is detected even in marked functions. Declarations of constants with the protected type, such as `const Admin Code = "ADMIN"`, are allowed anywhere in the type's declaration file.
@@ -115,7 +115,7 @@ ignore:
 | Key | Values | Default | Effect |
 | --- | --- | --- | --- |
 | `tests` | `true`, `false` | `true` | Report diagnostics in `_test.go` files |
-| `ignore.missing-reason` | `off`, `error` | `off` | With `error`, an [`//govo:ignore`](#ignoring-a-diagnostic) without a `// reason` is reported as `GOVO004` |
+| `ignore.missing-reason` | `off`, `error` | `off` | With `error`, an [`//govo:ignore`](#ignoring-a-diagnostic) without a `// reason` is reported as `GOVD003` |
 
 - The file is `.govo.yaml` in the tool's current working directory. Parent directories are not searched, and when the file does not exist the defaults apply.
 - [`-config`](#flags) names one file, reads no other, and takes precedence over `.govo.yaml`.
@@ -153,7 +153,7 @@ type (
 
 `factory` and `converter` are the only places where direct conversions are allowed. A `factory` may construct the types it names, including with non-empty composite literals and implicit conversions from unnamed array, slice, or map values, and a `converter` may extract their underlying representation. Each marker grants only its own direction, so a method such as `func (c Code) Upper() Code` that does both needs both markers. A conversion between two protected types needs a `factory` of the destination and a `converter` of the source. A pointer conversion that shares a protected value's storage under another type, such as `(*string)(&code)` or `(*ID)(raw)` from a slice, allows both reads and writes, so it needs both markers for each protected type involved. Function literals inside a marked function share its permission.
 
-Markers can be attached to exported and unexported functions and methods, so internal helpers can be marked too. They also check the shape of the function. Each named type is checked separately, and a type that fails its check is reported as `GOVO004` and dropped from the marker, which then grants nothing for that type.
+Markers can be attached to exported and unexported functions and methods, so internal helpers can be marked too. They also check the shape of the function. Each named type is checked separately, and a type that fails its check is reported as `GOVD001` and dropped from the marker, which then grants nothing for that type.
 
 | Marker | A named type passes when |
 | --- | --- |
@@ -162,7 +162,7 @@ Markers can be attached to exported and unexported functions and methods, so int
 
 - The type names may be omitted when the file declares a single protected type. With more than one, name them.
 - List several types on one line, separated by spaces, or repeat the directive. Both forms name the same set.
-- A marker on a declaration in another file than the type is reported as `GOVO004` and ignored.
+- A marker on a declaration in another file than the type is reported as `GOVD001` and ignored.
 
 ```go
 //govo:factory Code RegionCode
@@ -178,10 +178,10 @@ func DescribeCodes(c Code, r RegionCode) string { /* ... */ }
 Place `//govo:ignore` on its own line immediately before a statement or declaration, or at the end of a line. Rule IDs are comma-separated, and the reason follows in the same `// reason` form as golangci-lint.
 
 ```go
-//govo:ignore GOVO001 // Required for compatibility with an external specification
+//govo:ignore GOV001 // Required for compatibility with an external specification
 UseCode("ABC")
 
-_ = code == "ABC" //govo:ignore GOVO003 // Temporary migration exception
+_ = code == "ABC" //govo:ignore GOV003 // Temporary migration exception
 ```
 
 | Placement | Covers |
@@ -205,36 +205,41 @@ A comment on its own line never reaches into the body of a function literal, as 
 
 ### Invalid and unused directives
 
-These are reported as `GOVO004`. An invalid directive is ignored, but other valid directives at the same location still apply.
+An invalid directive is ignored, but other valid directives at the same location still apply.
 
 | Directive | Report |
 | --- | --- |
-| `//govo:foo` | `unknown govo directive "foo"` |
-| `//govo:protect Code` | `protect does not accept arguments` |
-| `//govo:protect` not above a type declaration | `protect is not attached to a type declaration` |
-| `//govo:protect` above a type alias | `protect requires a defined type` |
-| `//govo:protect` above `type Point struct{ X, Y int }` | `protect requires a basic, array, slice, or map underlying type` |
-| `//govo:factory` not above a function or method | `factory requires a function or method` |
-| `//govo:factory` in a file with several protected types | `factory requires a type name unless this file declares exactly one protected type` |
-| `//govo:factory Other` where `Other` is not protected in this file | `factory: Other is not a protected type declared in this file` |
-| `//govo:factory Code` on a function that does not return `Code` | `factory: Code is not returned by this API` |
-| `//govo:converter Code` on a function that does not take `Code` | `converter: Code is not accepted by this API` |
-| `//govo:ignore GOVO009` | `unknown ignore rule "GOVO009"` |
-| `//govo:ignore` with nothing to attach to | `ignore is not followed by a statement or declaration` |
-| `//govo:ignore` that suppresses nothing | `unused ignore directive` |
-| `//govo:ignore GOVO001,GOVO003` where `GOVO003` suppresses nothing | `unused ignore rule GOVO003` |
-| `//govo:ignore` without a reason, with `ignore.missing-reason: error` | `ignore directive has no reason` |
+| `//govo:foo` | `GOVD001: unknown govo directive "foo"` |
+| `//govo:protect Code` | `GOVD001: protect does not accept arguments` |
+| `//govo:protect` not above a type declaration | `GOVD001: protect is not attached to a type declaration` |
+| `//govo:protect` above a type alias | `GOVD001: protect requires a defined type` |
+| `//govo:protect` above `type Point struct{ X, Y int }` | `GOVD001: protect requires a basic, array, slice, or map underlying type` |
+| `//govo:factory` not above a function or method | `GOVD001: factory requires a function or method` |
+| `//govo:factory` in a file with several protected types | `GOVD001: factory requires a type name unless this file declares exactly one protected type` |
+| `//govo:factory Other` where `Other` is not protected in this file | `GOVD001: factory: Other is not a protected type declared in this file` |
+| `//govo:factory Code` on a function that does not return `Code` | `GOVD001: factory: Code is not returned by this API` |
+| `//govo:converter Code` on a function that does not take `Code` | `GOVD001: converter: Code is not accepted by this API` |
+| `//govo:ignore GOV009` | `GOVD001: unknown ignore rule "GOV009"` |
+| `//govo:ignore GOVD002` | `GOVD001: ignore rule GOVD002 cannot be suppressed` |
+| `//govo:ignore` with nothing to attach to | `GOVD001: ignore is not followed by a statement or declaration` |
+| `//govo:ignore` that suppresses nothing | `GOVD002: unused ignore directive` |
+| `//govo:ignore GOV001,GOV003` where `GOV003` suppresses nothing | `GOVD002: unused ignore rule GOV003` |
+| `//govo:ignore` without a reason, with `ignore.missing-reason: error` | `GOVD003: ignore directive has no reason` |
 
-Each report is prefixed with `GOVO004: `. `converter` gives the same messages as `factory` for the cases they share.
+`converter` gives the same messages as `factory` for the cases they share.
 
 ## Diagnostics
 
+Rule IDs are grouped by category, and each category is numbered independently. `GOV` rules report operations on protected types, and `GOVD` rules report problems with the directives themselves. Both kinds can be listed in [`//govo:ignore`](#ignoring-a-diagnostic), except `GOVD002`.
+
 | Rule | Reports |
 | ---- | ------- |
-| `GOVO001` | Construction of a protected type outside its `factory` functions, including pointer conversions such as `(*string)(&code)`, non-empty composite literals and implicit conversions from unnamed array, slice, or map values; constants of a protected type declared outside its declaration file; and implicit construction from untyped constants or untyped expressions such as comparisons anywhere |
-| `GOVO002` | Conversion from a protected type to another concrete type outside its `converter` functions, including pointer conversions in a `factory` that is not also a `converter`, and implicit conversions of a protected array, slice, or map to an unnamed type |
-| `GOVO003` | Comparisons and operations with untyped constants or untyped expressions, including `x++` and `x--` |
-| `GOVO004` | Invalid, unattached, or unused directives, and missing `ignore` reasons when required |
+| `GOV001` | Construction of a protected type outside its `factory` functions, including pointer conversions such as `(*string)(&code)`, non-empty composite literals and implicit conversions from unnamed array, slice, or map values; constants of a protected type declared outside its declaration file; and implicit construction from untyped constants or untyped expressions such as comparisons anywhere |
+| `GOV002` | Conversion from a protected type to another concrete type outside its `converter` functions, including pointer conversions in a `factory` that is not also a `converter`, and implicit conversions of a protected array, slice, or map to an unnamed type |
+| `GOV003` | Comparisons and operations with untyped constants or untyped expressions, including `x++` and `x--` |
+| `GOVD001` | Unknown, invalid, or unattached directives |
+| `GOVD002` | `ignore` directives or listed rules that suppress nothing |
+| `GOVD003` | `ignore` directives without a reason, when [`ignore.missing-reason`](#configuration) is `error` |
 
 ## Scope and limitations
 
