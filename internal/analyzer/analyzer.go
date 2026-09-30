@@ -70,8 +70,9 @@ type analyzerState struct {
 	imported map[*types.TypeName]*protectedType
 	// protectComments holds //govo:protect comments attached to a type declaration.
 	protectComments map[*ast.Comment]bool
-	// grants holds the protected types that valid factory and converter
-	// markers permit each function to construct or extract.
+	// grants holds the protected types that valid factory, converter, op,
+	// and scalar directives permit each function to construct, extract, or
+	// scale.
 	grants  map[*ast.FuncDecl]*grant
 	issues  []issue
 	ignore  []*ignoreDirective
@@ -84,10 +85,12 @@ type analyzerState struct {
 }
 
 // grant records the protected types that a marked function may construct
-// (factory) or extract (converter) with direct conversions.
+// (factory or op) or extract (converter or op) with direct conversions, and
+// those that it may scale by untyped constants (scalar).
 type grant struct {
 	construct map[*protectedType]bool
 	extract   map[*protectedType]bool
+	scale     map[*protectedType]bool
 }
 
 type issue struct {
@@ -320,6 +323,13 @@ func (s *analyzerState) mayConstruct(p *protectedType) bool {
 // converter of p.
 func (s *analyzerState) mayExtract(p *protectedType) bool {
 	return p.file == s.current && s.grant != nil && s.grant.extract[p]
+}
+
+// mayScale reports whether the code being analyzed may multiply or divide a
+// value of p by an untyped constant: in a function with a scalar directive
+// for p.
+func (s *analyzerState) mayScale(p *protectedType) bool {
+	return p.file == s.current && s.grant != nil && s.grant.scale[p]
 }
 
 func (s *analyzerState) issue(pos token.Pos, rule, msg string, f *ast.File) {

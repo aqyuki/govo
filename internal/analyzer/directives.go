@@ -18,6 +18,8 @@ const (
 	directiveProtect   = "protect"
 	directiveFactory   = "factory"
 	directiveConverter = "converter"
+	directiveOp        = "op"
+	directiveScalar    = "scalar"
 	directiveIgnore    = "ignore"
 )
 
@@ -49,6 +51,10 @@ func parseDirective(text string) (command, args string, ok bool) {
 }
 
 func (s *analyzerState) collectDirectives(f *ast.File) {
+	// A scalar directive depends on the factory permission that the markers
+	// of its function grant, wherever they appear in the doc comment.
+	var scalars []*ast.Comment
+
 	for _, group := range f.Comments {
 		for _, comment := range group.List {
 			command, args, ok := parseDirective(comment.Text)
@@ -65,8 +71,10 @@ func (s *analyzerState) collectDirectives(f *ast.File) {
 				if !s.protectComments[comment] {
 					s.issue(comment.Pos(), ruleInvalidDirective, "protect is not attached to a type declaration", f)
 				}
-			case directiveFactory, directiveConverter:
+			case directiveFactory, directiveConverter, directiveOp:
 				s.validateAPI(f, comment, command, args)
+			case directiveScalar:
+				scalars = append(scalars, comment)
 			case directiveIgnore:
 				s.parseIgnore(f, comment, args)
 			default:
@@ -74,13 +82,23 @@ func (s *analyzerState) collectDirectives(f *ast.File) {
 			}
 		}
 	}
+
+	for _, comment := range scalars {
+		_, args, _ := parseDirective(comment.Text)
+		s.validateScalar(f, comment, args)
+	}
 }
 
 func commentInGroup(group *ast.CommentGroup, comment *ast.Comment) bool {
 	return group != nil && slices.Contains(group.List, comment)
 }
 
-func (s *analyzerState) validateAPI(f *ast.File, comment *ast.Comment, command, args string) {
+// directiveTargets returns the function that a function directive is
+// attached to and the protected types that it names. It reports the
+// directive and returns a nil function when either cannot be determined.
+// A name that is not a protected type declared in f is reported and left
+// out of the result.
+func (s *analyzerState) directiveTargets(f *ast.File, comment *ast.Comment, command, args string) (*ast.FuncDecl, []*protectedType) {
 	var fn *ast.FuncDecl
 
 	for _, decl := range f.Decls {
@@ -93,7 +111,7 @@ func (s *analyzerState) validateAPI(f *ast.File, comment *ast.Comment, command, 
 
 	if fn == nil {
 		s.issue(comment.Pos(), ruleInvalidDirective, command+" requires a function or method", f)
-		return
+		return nil, nil
 	}
 
 	protected := s.files[f].protected
@@ -106,10 +124,10 @@ func (s *analyzerState) validateAPI(f *ast.File, comment *ast.Comment, command, 
 		names = []string{protected[0].name.Name()}
 	} else {
 		s.issue(comment.Pos(), ruleInvalidDirective, command+" requires a type name unless this file declares exactly one protected type", f)
-		return
+		return nil, nil
 	}
 
-	sig, _ := s.pass.TypesInfo.TypeOf(fn.Name).(*types.Signature)
+	var targets []*protectedType
 
 	for _, name := range names {
 		i := slices.IndexFunc(protected, func(p *protectedType) bool { return p.name.Name() == name })
@@ -118,34 +136,80 @@ func (s *analyzerState) validateAPI(f *ast.File, comment *ast.Comment, command, 
 			continue
 		}
 
-		if sig == nil {
+		targets = append(targets, protected[i])
+	}
+
+	return fn, targets
+}
+
+// validateAPI checks the shape of a function marked as a factory,
+// converter, or op of each named type and grants the permission for each
+// type that passes. An op both constructs and extracts, so it must pass
+// the checks of both a factory and a converter.
+func (s *analyzerState) validateAPI(f *ast.File, comment *ast.Comment, command, args string) {
+	fn, targets := s.directiveTargets(f, comment, command, args)
+	if fn == nil {
+		return
+	}
+
+	sig, _ := s.pass.TypesInfo.TypeOf(fn.Name).(*types.Signature)
+	if sig == nil {
+		return
+	}
+
+	for _, p := range targets {
+		t := p.name.Type()
+
+		if command != directiveFactory && !acceptsType(sig, t) {
+			s.issue(comment.Pos(), ruleInvalidDirective, fmt.Sprintf("%s: %s is not accepted by this API", command, p.name.Name()), f)
 			continue
 		}
 
-		t := protected[i].name.Type()
-
-		if command == directiveFactory {
-			if !returnsType(sig, t) {
-				s.issue(comment.Pos(), ruleInvalidDirective, fmt.Sprintf("%s: %s is not returned by this API", command, name), f)
-				continue
-			}
-
-			s.grantFor(fn).construct[protected[i]] = true
-		} else {
-			if !acceptsType(sig, t) {
-				s.issue(comment.Pos(), ruleInvalidDirective, fmt.Sprintf("%s: %s is not accepted by this API", command, name), f)
-				continue
-			}
-
-			s.grantFor(fn).extract[protected[i]] = true
+		if command != directiveConverter && !returnsType(sig, t) {
+			s.issue(comment.Pos(), ruleInvalidDirective, fmt.Sprintf("%s: %s is not returned by this API", command, p.name.Name()), f)
+			continue
 		}
+
+		g := s.grantFor(fn)
+		g.construct[p] = g.construct[p] || command != directiveConverter
+		g.extract[p] = g.extract[p] || command != directiveFactory
+	}
+}
+
+// validateScalar checks a scalar directive, which permits untyped constants
+// as scalars that multiply or divide the named numeric types. Scaling
+// yields a new value, so the function must be permitted to construct each
+// type, as a factory or op of it.
+func (s *analyzerState) validateScalar(f *ast.File, comment *ast.Comment, args string) {
+	fn, targets := s.directiveTargets(f, comment, directiveScalar, args)
+	if fn == nil {
+		return
+	}
+
+	for _, p := range targets {
+		if basic, ok := p.name.Type().Underlying().(*types.Basic); !ok || basic.Info()&types.IsNumeric == 0 {
+			s.issue(comment.Pos(), ruleInvalidDirective, fmt.Sprintf("%s: %s does not have a numeric underlying type", directiveScalar, p.name.Name()), f)
+			continue
+		}
+
+		g := s.grants[fn]
+		if g == nil || !g.construct[p] {
+			s.issue(comment.Pos(), ruleInvalidDirective, fmt.Sprintf("%s: this API is not a factory or op of %s", directiveScalar, p.name.Name()), f)
+			continue
+		}
+
+		g.scale[p] = true
 	}
 }
 
 func (s *analyzerState) grantFor(fn *ast.FuncDecl) *grant {
 	g := s.grants[fn]
 	if g == nil {
-		g = &grant{construct: make(map[*protectedType]bool), extract: make(map[*protectedType]bool)}
+		g = &grant{
+			construct: make(map[*protectedType]bool),
+			extract:   make(map[*protectedType]bool),
+			scale:     make(map[*protectedType]bool),
+		}
 		s.grants[fn] = g
 	}
 
