@@ -77,15 +77,18 @@ go vet -vettool=/absolute/path/to/govo [go vet flags] [govo flags] [packages]
 
 Packages are specified with the usual Go package patterns, such as `./...`, `./internal/domain`, or `example.com/app/...`. With no package arguments, govo checks `./...`. Individual `.go` files are not accepted; specify the package that contains them instead.
 
-| Flag | Description |
-| ---- | ----------- |
-| `-config=path` | Read configuration from `path` instead of `.govo.yaml` in the current directory. A missing file is an error. |
-| `-tags=a,b` | Build tags used to select files when loading packages. Commas or spaces separate tags. |
-| `-test=false` | Do not load test packages. To load them but skip reporting in `_test.go` files, use `tests: false` in the configuration instead. |
-| `-json` | Print diagnostics as JSON. |
-| `-c=N` | Print `N` lines of source context around each diagnostic. |
+### Flags
 
-Run `govo help` or `govo -help` to print this usage. The debugging and profiling flags of the underlying `golang.org/x/tools/go/analysis` driver (`-debug`, `-cpuprofile`, `-memprofile`, and `-trace`) are also accepted.
+| Flag | Default | Effect |
+| --- | --- | --- |
+| `-config` | *(`.govo.yaml` in the current directory)* | Path to a YAML config file. Skips the [`.govo.yaml` lookup](#configuration). A missing file is an error |
+| `-tags` | None | Build tags used to select files when loading packages. Commas or spaces separate tags |
+| `-test` | `true` | Load test packages as well. To load them but skip reporting in `_test.go` files, set [`tests: false`](#configuration) instead |
+| `-json` | `false` | Print diagnostics as JSON |
+| `-c` | `-1` | Print `N` lines of source context around each diagnostic |
+| `-V=full` | | Print the version and exit |
+
+`-test`, `-json`, `-c` and `-V` come from `go/analysis`, which also accepts its debugging and profiling flags (`-debug`, `-cpuprofile`, `-memprofile`, and `-trace`). `govo help` or `govo -help` prints this usage.
 
 The standalone command exits with status `0` when there are no diagnostics, `3` when it reports diagnostics, `2` for an invalid command line, and `1` when packages cannot be loaded or analysis fails. Any nonzero status should fail a CI check.
 
@@ -98,24 +101,79 @@ go vet -vettool="$(command -v govo)" -tags=integration -config="$PWD/.govo.yaml"
 
 `go vet` handles package patterns and `-tags` itself and exits with status `1` when govo reports diagnostics. `go vet -help` prints go vet's own usage, which refers to `govo help` for govo's flags. It starts govo once per package in that package's directory, so `.govo.yaml` and a relative `-config` path are resolved there. To apply one configuration to every package, pass an absolute path to `-config`.
 
-## Configuration and exceptions
+## Configuration
 
-The configuration file specified by `-config` takes precedence. If omitted, govo reads `.govo.yaml` from the tool's current working directory; parent directories are not searched. If that default file does not exist, it uses the default configuration.
+Every setting is optional. The YAML block shows every available key with its default value.
 
 ```yaml
-tests: true
+tests: true               # true | false
+
 ignore:
-  missing-reason: off
+  missing-reason: off     # off | error
 ```
 
-| Key | Values | Default | Description |
-| --- | ------ | ------- | ----------- |
+| Key | Values | Default | Effect |
+| --- | --- | --- | --- |
 | `tests` | `true`, `false` | `true` | Report diagnostics in `_test.go` files |
-| `ignore.missing-reason` | `off`, `error` | `off` | With `error`, an `//govo:ignore` without a `// reason` is reported as `GOVO004` |
+| `ignore.missing-reason` | `off`, `error` | `off` | With `error`, an [`//govo:ignore`](#ignoring-a-diagnostic) without a `// reason` is reported as `GOVO004` |
 
-Unknown keys are ignored, and invalid values for known keys are errors. govo has no warning level: every diagnostic fails the command.
+- The file is `.govo.yaml` in the tool's current working directory. Parent directories are not searched, and when the file does not exist the defaults apply.
+- [`-config`](#flags) names one file, reads no other, and takes precedence over `.govo.yaml`.
+- Unknown keys are ignored, and an invalid value for a known key is an error.
+- govo has no warning level: every diagnostic fails the command.
 
-To allow a necessary exception, place `//govo:ignore` on its own line immediately before the relevant statement or declaration, or at the end of the same line.
+## Directives
+
+Every directive is a `//govo:name` line comment, written without a space after `//`.
+
+| Directive | Attaches to | Effect |
+| --- | --- | --- |
+| `//govo:protect` | The type declaration immediately after it | Protects that type. Takes no argument |
+| `//govo:factory [types]` | The exported function or method immediately after it, in the type's declaration file | Marks a public API that constructs the named protected types |
+| `//govo:converter [types]` | The exported function or method immediately after it, in the type's declaration file | Marks a public API that extracts the underlying representation of the named protected types |
+| `//govo:ignore [rules] [// reason]` | The statement or declaration after it, or its own line | [Suppresses diagnostics](#ignoring-a-diagnostic) for the listed rules, or for every rule when none are listed |
+
+### Protecting a type
+
+`protect` applies to one type declaration, not to a whole `type (...)` group. Inside a group, each type to protect needs its own directive.
+
+```go
+type (
+    //govo:protect
+    Code string
+
+    //govo:protect
+    RegionCode string
+
+    Label string // Not protected
+)
+```
+
+### Markers
+
+`factory` and `converter` are optional. They check the shape of a public API; they do not restrict where direct conversions are allowed, which is the whole declaration file. Each named type is checked separately, and a type that fails its check is reported as `GOVO004` and dropped from the marker.
+
+| Marker | A named type passes when |
+| --- | --- |
+| `factory` | One of the results has exactly that type. `(Code, error)` passes; `*Code` and `[]Code` do not |
+| `converter` | The receiver or an argument has that type or a pointer to it. The results are unrestricted |
+
+- The type names may be omitted when the file declares a single protected type. With more than one, name them.
+- List several types on one line, separated by spaces, or repeat the directive. Both forms name the same set.
+- A marker on a declaration in another file than the type is reported as `GOVO004` and ignored.
+
+```go
+//govo:factory Code RegionCode
+func NewCodes(s string) (Code, RegionCode, error) { /* ... */ }
+
+//govo:converter Code
+//govo:converter RegionCode
+func DescribeCodes(c Code, r RegionCode) string { /* ... */ }
+```
+
+### Ignoring a diagnostic
+
+Place `//govo:ignore` on its own line immediately before a statement or declaration, or at the end of a line. Rule IDs are comma-separated, and the reason follows in the same `// reason` form as golangci-lint.
 
 ```go
 //govo:ignore GOVO001 // Required for compatibility with an external specification
@@ -124,7 +182,48 @@ UseCode("ABC")
 _ = code == "ABC" //govo:ignore GOVO003 // Temporary migration exception
 ```
 
-Omitting the rule ID applies the exception to all rules. A comment on its own line covers only the header of an `if`, `for`, `switch`, or `select` and only the expressions of a `case` clause, not the statements in their bodies or in the bodies of function literals. Unused exception comments, exception comments not followed by a statement or declaration, and invalid directives are reported as `GOVO004`.
+| Placement | Covers |
+| --- | --- |
+| At the end of a line | Every diagnostic caused on that physical line |
+| On its own line | The following statement or declaration, even when it spans several lines |
+| On its own line before `if`, `for`, `switch`, or `select` | The header only, such as the condition and initializer, not the block |
+| On its own line before `case` or `default` | The clause's expressions or communication only, not the statements after the colon |
+
+A comment on its own line never reaches into the body of a function literal, as in `defer func() { ... }()`, and there is no block-wide suppression. A reason is optional unless [`ignore.missing-reason`](#configuration) is `error`.
+
+<details>
+<summary>How the target of an ignore is found</summary>
+
+- The following statement or declaration is searched for only in the innermost declaration list, `const`/`var`/`type` group, block, or clause that contains the comment.
+- A comment at the end of a block, or inside an expression such as between the arguments of a multiline call, has no target.
+- A label does not change the target: a comment before `L: for ...` covers the header of that `for`.
+- In a multiline call, a trailing comment on the closing parenthesis line does not cover arguments on other lines.
+
+</details>
+
+### Invalid and unused directives
+
+These are reported as `GOVO004`. An invalid directive is ignored, but other valid directives at the same location still apply.
+
+| Directive | Report |
+| --- | --- |
+| `//govo:foo` | `unknown govo directive "foo"` |
+| `//govo:protect Code` | `protect does not accept arguments` |
+| `//govo:protect` not above a type declaration | `protect is not attached to a type declaration` |
+| `//govo:protect` above a type alias | `protect requires a defined type` |
+| `//govo:protect` above `type Codes []string` | `protect requires a basic underlying type` |
+| `//govo:factory` above an unexported or missing function | `factory requires an exported function or method` |
+| `//govo:factory` in a file with several protected types | `factory requires a type name unless this file declares exactly one protected type` |
+| `//govo:factory Other` where `Other` is not protected in this file | `factory: Other is not a protected type declared in this file` |
+| `//govo:factory Code` on a function that does not return `Code` | `factory: Code is not returned by this API` |
+| `//govo:converter Code` on a function that does not take `Code` | `converter: Code is not accepted by this API` |
+| `//govo:ignore GOVO009` | `unknown ignore rule "GOVO009"` |
+| `//govo:ignore` with nothing to attach to | `ignore is not followed by a statement or declaration` |
+| `//govo:ignore` that suppresses nothing | `unused ignore directive` |
+| `//govo:ignore GOVO001,GOVO003` where `GOVO003` suppresses nothing | `unused ignore rule GOVO003` |
+| `//govo:ignore` without a reason, with `ignore.missing-reason: error` | `ignore directive has no reason` |
+
+Each report is prefixed with `GOVO004: `. `converter` gives the same messages as `factory` for the cases they share.
 
 ## Diagnostics
 
