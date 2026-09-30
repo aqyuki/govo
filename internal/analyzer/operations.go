@@ -9,8 +9,15 @@ import (
 
 func (s *analyzerState) analyzeFile(f *ast.File) {
 	for _, decl := range f.Decls {
+		s.grant = nil
+		if fn, ok := decl.(*ast.FuncDecl); ok {
+			s.grant = s.grants[fn]
+		}
+
 		s.analyzeNode(decl, nil)
 	}
+
+	s.grant = nil
 }
 
 func (s *analyzerState) analyzeNode(root ast.Node, signature *types.Signature) {
@@ -33,6 +40,19 @@ func (s *analyzerState) analyzeNode(root ast.Node, signature *types.Signature) {
 		case *ast.GenDecl:
 			if n.Tok == token.CONST || n.Tok == token.VAR {
 				s.valueDecl(n)
+			}
+
+			if n.Tok == token.CONST {
+				// The type declaration file may declare protected constants
+				// with explicit conversions, as in const A = Code("A").
+				s.inConst = true
+				for _, spec := range n.Specs {
+					s.analyzeNode(spec, signature)
+				}
+
+				s.inConst = false
+
+				return false
 			}
 
 		case *ast.AssignStmt:
@@ -182,17 +202,19 @@ func (s *analyzerState) conversion(c *ast.CallExpr, dest types.Type) {
 		return
 	}
 
-	if pd != nil && pd.file != s.current {
-		s.issue(c.Fun.Pos(), ruleConstruction, fmt.Sprintf("direct construction of protected type %s", pd.name.Name()), s.current)
+	if pd != nil && !s.mayConstruct(pd) {
+		s.constructionIssue(c.Fun.Pos(), "direct", pd)
 		return
 	}
 
-	if ps == nil || ps.file == s.current {
+	// go/types records the contextual type of an untyped operand, as in
+	// Code("ABC"), which extracts nothing.
+	if ps == nil || s.untyped(c.Args[0]) || s.mayExtract(ps) {
 		return
 	}
 
 	if _, ok := dest.Underlying().(*types.Interface); !ok {
-		s.issue(c.Fun.Pos(), ruleExtraction, fmt.Sprintf("direct extraction from protected type %s", ps.name.Name()), s.current)
+		s.extractionIssue(c.Fun.Pos(), "direct", ps)
 	}
 }
 
@@ -257,13 +279,13 @@ func (s *analyzerState) composite(c *ast.CompositeLit) {
 	}
 
 	// An empty literal holds no elements, like the zero value or make.
-	if p := s.protected(t); p != nil && p.file != s.current && len(c.Elts) > 0 {
+	if p := s.protected(t); p != nil && !s.mayConstruct(p) && len(c.Elts) > 0 {
 		pos := c.Lbrace
 		if c.Type != nil {
 			pos = c.Type.Pos()
 		}
 
-		s.issue(pos, ruleConstruction, fmt.Sprintf("direct construction of protected type %s", p.name.Name()), s.current)
+		s.constructionIssue(pos, "direct", p)
 	}
 
 	switch u := t.Underlying().(type) {
@@ -377,23 +399,35 @@ func (s *analyzerState) implicitTuple(expr ast.Expr, targets []types.Type) {
 // target. A value of an unnamed array, slice, or map type is assignable to
 // a defined type with the same underlying type and vice versa, so it
 // constructs or extracts a protected type without a conversion. As with an
-// explicit conversion, the type declaration file is trusted.
+// explicit conversion, marked functions are trusted.
 func (s *analyzerState) assignment(pos token.Pos, source, target types.Type) {
 	if source == nil || target == nil || types.Identical(source, target) || !types.Identical(source.Underlying(), target.Underlying()) {
 		return
 	}
 
 	if p := s.protected(target); p != nil {
-		if p.file != s.current {
-			s.issue(pos, ruleConstruction, fmt.Sprintf("implicit construction of protected type %s", p.name.Name()), s.current)
+		if !s.mayConstruct(p) {
+			s.constructionIssue(pos, "implicit", p)
 		}
 
 		return
 	}
 
-	if p := s.protected(source); p != nil && p.file != s.current {
-		s.issue(pos, ruleExtraction, fmt.Sprintf("implicit extraction from protected type %s", p.name.Name()), s.current)
+	if p := s.protected(source); p != nil && !s.mayExtract(p) {
+		s.extractionIssue(pos, "implicit", p)
 	}
+}
+
+// constructionIssue reports a construction of p outside its factories and
+// points to the marker that permits it.
+func (s *analyzerState) constructionIssue(pos token.Pos, kind string, p *protectedType) {
+	s.issue(pos, ruleConstruction, fmt.Sprintf("%s construction of protected type %s; use a //govo:%s function", kind, p.name.Name(), directiveFactory), s.current)
+}
+
+// extractionIssue reports an extraction from p outside its converters and
+// points to the marker that permits it.
+func (s *analyzerState) extractionIssue(pos token.Pos, kind string, p *protectedType) {
+	s.issue(pos, ruleExtraction, fmt.Sprintf("%s extraction from protected type %s; use a //govo:%s function", kind, p.name.Name(), directiveConverter), s.current)
 }
 
 func (s *analyzerState) typesOf(exprs []ast.Expr) []types.Type {

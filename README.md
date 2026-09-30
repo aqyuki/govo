@@ -6,11 +6,11 @@ govo is a linter that detects code that bypasses the construction and conversion
 
 In Go, even if you define a custom type such as `type Code string`, callers can construct it directly with `Code("...")`. Untyped constants, such as string literals, are also implicitly converted to that type in arguments and assignments. Callers can bypass validation implemented in a constructor, so defining a type alone does not enforce domain rules.
 
-govo treats the Go file containing the type declaration and its domain rules as a trust boundary. In other files, even within the same package, it detects direct construction and conversion to the internal representation, encouraging callers to use the public API.
+govo treats the functions marked with `//govo:factory` and `//govo:converter` in the file that declares the type as a trust boundary. Everywhere else, including unmarked functions in the same file and other files in the same package, it detects direct construction and conversion to the internal representation, encouraging callers to use the marked APIs.
 
 ## Example
 
-In the file that declares the type, implement a constructor that validates input and a method that returns the internal representation.
+In the file that declares the type, implement a constructor that validates input and a method that returns the internal representation, and mark them.
 
 ```go
 // code.go
@@ -45,13 +45,13 @@ if err != nil {
 }
 raw := code.String()       // Allowed: retrieve through the public API
 
-_ = Code("ABC")           // GOVO001: direct construction
+_ = Code("ABC")           // GOVO001: direct construction; use a //govo:factory function
 var bypass Code = "ABC"   // GOVO001: implicit construction from an untyped constant
-_ = string(code)          // GOVO002: direct conversion to the internal representation
+_ = string(code)          // GOVO002: direct extraction; use a //govo:converter function
 _ = code == "ABC"         // GOVO003: comparison with an untyped constant
 ```
 
-`factory` and `converter` are optional markers for public APIs. Direct conversions are allowed throughout the file that declares the type, not just in functions with these markers. Implicit construction from untyped constants, as well as comparisons and operations involving them, is detected even in that file. However, declarations of constants with the protected type are allowed in that file.
+Direct construction is allowed only in functions marked with `factory`, and direct conversion to the internal representation only in functions marked with `converter`. Implicit construction from untyped constants, as well as comparisons and operations involving them, is detected even in marked functions. Declarations of constants with the protected type, such as `const Admin Code = "ADMIN"`, are allowed anywhere in the type's declaration file.
 
 ## Installation and usage
 
@@ -129,8 +129,8 @@ Every directive is a `//govo:name` line comment, written without a space after `
 | Directive | Attaches to | Effect |
 | --- | --- | --- |
 | `//govo:protect` | The type declaration immediately after it | Protects that type. Takes no argument |
-| `//govo:factory [types]` | The exported function or method immediately after it, in the type's declaration file | Marks a public API that constructs the named protected types |
-| `//govo:converter [types]` | The exported function or method immediately after it, in the type's declaration file | Marks a public API that extracts the underlying representation of the named protected types |
+| `//govo:factory [types]` | The function or method immediately after it, in the type's declaration file | Allows it to construct the named protected types directly |
+| `//govo:converter [types]` | The function or method immediately after it, in the type's declaration file | Allows it to extract the underlying representation of the named protected types directly |
 | `//govo:ignore [rules] [// reason]` | The statement or declaration after it, or its own line | [Suppresses diagnostics](#ignoring-a-diagnostic) for the listed rules, or for every rule when none are listed |
 
 ### Protecting a type
@@ -151,7 +151,9 @@ type (
 
 ### Markers
 
-`factory` and `converter` are optional. They check the shape of a public API; they do not restrict where direct conversions are allowed, which is the whole declaration file. Each named type is checked separately, and a type that fails its check is reported as `GOVO004` and dropped from the marker.
+`factory` and `converter` are the only places where direct conversions are allowed. A `factory` may construct the types it names, including with non-empty composite literals and implicit conversions from unnamed array, slice, or map values, and a `converter` may extract their underlying representation. Each marker grants only its own direction, so a method such as `func (c Code) Upper() Code` that does both needs both markers. A conversion between two protected types needs a `factory` of the destination and a `converter` of the source. Function literals inside a marked function share its permission.
+
+Markers can be attached to exported and unexported functions and methods, so internal helpers can be marked too. They also check the shape of the function. Each named type is checked separately, and a type that fails its check is reported as `GOVO004` and dropped from the marker, which then grants nothing for that type.
 
 | Marker | A named type passes when |
 | --- | --- |
@@ -212,7 +214,7 @@ These are reported as `GOVO004`. An invalid directive is ignored, but other vali
 | `//govo:protect` not above a type declaration | `protect is not attached to a type declaration` |
 | `//govo:protect` above a type alias | `protect requires a defined type` |
 | `//govo:protect` above `type Codes []string` | `protect requires a basic underlying type` |
-| `//govo:factory` above an unexported or missing function | `factory requires an exported function or method` |
+| `//govo:factory` not above a function or method | `factory requires a function or method` |
 | `//govo:factory` in a file with several protected types | `factory requires a type name unless this file declares exactly one protected type` |
 | `//govo:factory Other` where `Other` is not protected in this file | `factory: Other is not a protected type declared in this file` |
 | `//govo:factory Code` on a function that does not return `Code` | `factory: Code is not returned by this API` |
@@ -229,8 +231,8 @@ Each report is prefixed with `GOVO004: `. `converter` gives the same messages as
 
 | Rule | Reports |
 | ---- | ------- |
-| `GOVO001` | Construction of a protected type outside its declaration file, including non-empty composite literals and implicit conversions from unnamed array, slice, or map values, and implicit construction from untyped constants or untyped expressions such as comparisons in any file |
-| `GOVO002` | Conversion from a protected type to another concrete type outside its declaration file, including implicit conversions of a protected array, slice, or map to an unnamed type |
+| `GOVO001` | Construction of a protected type outside its `factory` functions, including non-empty composite literals and implicit conversions from unnamed array, slice, or map values; constants of a protected type declared outside its declaration file; and implicit construction from untyped constants or untyped expressions such as comparisons anywhere |
+| `GOVO002` | Conversion from a protected type to another concrete type outside its `converter` functions, including implicit conversions of a protected array, slice, or map to an unnamed type |
 | `GOVO003` | Comparisons and operations with untyped constants or untyped expressions, including `x++` and `x--` |
 | `GOVO004` | Invalid, unattached, or unused directives, and missing `ignore` reasons when required |
 

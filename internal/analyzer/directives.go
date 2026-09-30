@@ -91,8 +91,8 @@ func (s *analyzerState) validateAPI(f *ast.File, comment *ast.Comment, command, 
 		}
 	}
 
-	if fn == nil || !fn.Name.IsExported() {
-		s.issue(comment.Pos(), ruleDirective, command+" requires an exported function or method", f)
+	if fn == nil {
+		s.issue(comment.Pos(), ruleDirective, command+" requires a function or method", f)
 		return
 	}
 
@@ -127,11 +127,29 @@ func (s *analyzerState) validateAPI(f *ast.File, comment *ast.Comment, command, 
 		if command == directiveFactory {
 			if !returnsType(sig, t) {
 				s.issue(comment.Pos(), ruleDirective, fmt.Sprintf("%s: %s is not returned by this API", command, name), f)
+				continue
 			}
-		} else if !acceptsType(sig, t) {
-			s.issue(comment.Pos(), ruleDirective, fmt.Sprintf("%s: %s is not accepted by this API", command, name), f)
+
+			s.grantFor(fn).construct[protected[i]] = true
+		} else {
+			if !acceptsType(sig, t) {
+				s.issue(comment.Pos(), ruleDirective, fmt.Sprintf("%s: %s is not accepted by this API", command, name), f)
+				continue
+			}
+
+			s.grantFor(fn).extract[protected[i]] = true
 		}
 	}
+}
+
+func (s *analyzerState) grantFor(fn *ast.FuncDecl) *grant {
+	g := s.grants[fn]
+	if g == nil {
+		g = &grant{construct: make(map[*protectedType]bool), extract: make(map[*protectedType]bool)}
+		s.grants[fn] = g
+	}
+
+	return g
 }
 
 func returnsType(sig *types.Signature, t types.Type) bool {

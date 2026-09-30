@@ -62,9 +62,24 @@ type analyzerState struct {
 	imported map[*types.TypeName]*protectedType
 	// protectComments holds //govo:protect comments attached to a type declaration.
 	protectComments map[*ast.Comment]bool
-	issues          []issue
-	ignore          []*ignoreDirective
-	current         *ast.File
+	// grants holds the protected types that valid factory and converter
+	// markers permit each function to construct or extract.
+	grants  map[*ast.FuncDecl]*grant
+	issues  []issue
+	ignore  []*ignoreDirective
+	current *ast.File
+	// grant is the permission of the function declaration being analyzed,
+	// or nil outside a marked function.
+	grant *grant
+	// inConst is set while a const declaration is analyzed.
+	inConst bool
+}
+
+// grant records the protected types that a marked function may construct
+// (factory) or extract (converter) with direct conversions.
+type grant struct {
+	construct map[*protectedType]bool
+	extract   map[*protectedType]bool
 }
 
 type issue struct {
@@ -91,6 +106,7 @@ func run(pass *analysis.Pass) (any, error) {
 		local:           make(map[*types.TypeName]*protectedType),
 		imported:        make(map[*types.TypeName]*protectedType),
 		protectComments: make(map[*ast.Comment]bool),
+		grants:          make(map[*ast.FuncDecl]*grant),
 	}
 
 	for _, f := range pass.Files {
@@ -278,6 +294,24 @@ func (s *analyzerState) protected(t types.Type) *protectedType {
 	s.imported[obj] = p
 
 	return p
+}
+
+// mayConstruct reports whether the code being analyzed may construct p
+// directly: in a function marked as a factory of p, or in a const
+// declaration in the file that declares p.
+func (s *analyzerState) mayConstruct(p *protectedType) bool {
+	if p.file != s.current {
+		return false
+	}
+
+	return s.inConst || s.grant != nil && s.grant.construct[p]
+}
+
+// mayExtract reports whether the code being analyzed may extract the
+// underlying representation of p directly: in a function marked as a
+// converter of p.
+func (s *analyzerState) mayExtract(p *protectedType) bool {
+	return p.file == s.current && s.grant != nil && s.grant.extract[p]
 }
 
 func (s *analyzerState) issue(pos token.Pos, rule, msg string, f *ast.File) {
