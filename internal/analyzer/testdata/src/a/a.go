@@ -63,12 +63,14 @@ func tabs(c Code) {
 //govo:protect
 type hidden string // want hidden:"&{}"
 
+//govo:factory hidden
 func Hidden() hidden { return hidden("h") }
 
 type Holder struct{ H hidden }
 
 const Raw = "X"
 
+//govo:factory Flag
 func trusted(x, y int) Flag {
 	_ = Flag(x == y)
 	return x == y // want "GOVO001: untyped expression used as protected type Flag"
