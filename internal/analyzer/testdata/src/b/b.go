@@ -3,38 +3,38 @@ package b
 import "a"
 
 const (
-	Foreign   a.Code = "X" // want "GOVO001"
-	Inherited              // want "GOVO001"
+	Foreign   a.Code = "X" // want "GOV001"
+	Inherited              // want "GOV001"
 )
 
 func use(c a.Code, s string) {
-	_ = a.Code(s)  // want "GOVO001"
-	_ = a.Alias(s) // want "GOVO001"
+	_ = a.Code(s)  // want "GOV001"
+	_ = a.Alias(s) // want "GOV001"
 
-	_ = string(c) // want "GOVO002"
+	_ = string(c) // want "GOV002"
 
-	_ = c == "X" // want "GOVO003"
+	_ = c == "X" // want "GOV003"
 
-	_ = []a.Code{"X"}              // want "GOVO001"
-	_ = map[a.Code]int{"X": 1}     // want "GOVO001"
-	_ = struct{ C a.Code }{C: "X"} // want "GOVO001"
-	_ = append([]a.Code{}, "X")    // want "GOVO001"
+	_ = []a.Code{"X"}              // want "GOV001"
+	_ = map[a.Code]int{"X": 1}     // want "GOV001"
+	_ = struct{ C a.Code }{C: "X"} // want "GOV001"
+	_ = append([]a.Code{}, "X")    // want "GOV001"
 
 	var ch chan a.Code
-	ch <- "X" // want "GOVO001"
+	ch <- "X" // want "GOV001"
 
 	var p *a.Code
-	*p = "X" // want "GOVO001"
+	*p = "X" // want "GOV001"
 
-	_ = func() a.Code { return "X" }() // want "GOVO001"
+	_ = func() a.Code { return "X" }() // want "GOV001"
 
 	switch c {
-	case "X": // want "GOVO003"
+	case "X": // want "GOV003"
 	}
 
-	c += "X" // want "GOVO003"
+	c += "X" // want "GOV003"
 
-	//govo:ignore GOVO001 // test exception
+	//govo:ignore GOV001 // test exception
 	_ = a.Code("X")
 
 	_ = any(c)
@@ -42,44 +42,44 @@ func use(c a.Code, s string) {
 	_ = a.NewCode("X")
 
 	take(
-		"X", //govo:ignore GOVO001 // line scoped exception
+		"X", //govo:ignore GOV001 // line scoped exception
 	)
 
-	//govo:ignore GOVO003 // only the header
+	//govo:ignore GOV003 // only the header
 	if c == "X" {
-		_ = c == "Y" // want "GOVO003"
+		_ = c == "Y" // want "GOV003"
 	}
 
-	//govo:ignore GOVO001,GOVO002 // both conversions
+	//govo:ignore GOV001,GOV002 // both conversions
 	_ = a.Code(string(c))
-	_ = a.Code(string(c)) //govo:ignore GOVO001,GOVO002 // same line
+	_ = a.Code(string(c)) //govo:ignore GOV001,GOV002 // same line
 }
 
 func take(a.Code) {}
 
-func call() { take("X") } // want "GOVO001"
+func call() { take("X") } // want "GOV001"
 
 func builtins(c a.Code, m map[a.Code]int) {
-	delete(m, "X")  // want "GOVO001"
-	_ = min(c, "X") // want "GOVO001"
-	_ = max("X", c) // want "GOVO001"
+	delete(m, "X")  // want "GOV001"
+	_ = min(c, "X") // want "GOV001"
+	_ = max("X", c) // want "GOV001"
 
-	var f a.Flag = true // want "GOVO001"
+	var f a.Flag = true // want "GOV001"
 	_ = f
 
 	append := func(c a.Code, other a.Code) {}
-	append(c, "X") // want "GOVO001"
+	append(c, "X") // want "GOV001"
 }
 
 func constants(c a.Code) {
-	var imported a.Code = a.Raw // want "GOVO001"
+	var imported a.Code = a.Raw // want "GOV001"
 	_ = imported
-	_ = c == a.Raw   // want "GOVO003"
-	_ = c == (a.Raw) // want "GOVO003"
+	_ = c == a.Raw   // want "GOV003"
+	_ = c == (a.Raw) // want "GOV003"
 
-	var n a.Number = min(1, 2) // want "GOVO001"
+	var n a.Number = min(1, 2) // want "GOV001"
 	_ = n
-	_ = n == max(1, 2) // want "GOVO003"
+	_ = n == max(1, 2) // want "GOV003"
 
 	var typed a.Code = a.Local
 	_ = typed
@@ -94,64 +94,64 @@ func shifts(n a.Number, u uint) {
 	_ = n >> u
 	n <<= 2
 	n >>= 1
-	_ = n + 1 // want "GOVO003"
-	n++       // want "GOVO003"
-	n--       // want "GOVO003"
+	_ = n + 1 // want "GOV003"
+	n++       // want "GOV003"
+	n--       // want "GOV003"
 
 	var i int
 	i++
 }
 
 func unexported(h a.Holder) {
-	_ = a.Hidden() == "X" // want "GOVO003"
-	_ = a.Holder{H: "X"}  // want "GOVO001"
-	_ = string(h.H)       // want "GOVO002"
+	_ = a.Hidden() == "X" // want "GOV003"
+	_ = a.Holder{H: "X"}  // want "GOV001"
+	_ = string(h.H)       // want "GOV002"
 	_ = a.Hidden() == h.H
 }
 
 func ignoreScope(c a.Code, ch chan a.Code) {
 	switch c {
-	//govo:ignore GOVO003 // only the case expressions
+	//govo:ignore GOV003 // only the case expressions
 	case "A":
-		_ = c == "B" // want "GOVO003"
+		_ = c == "B" // want "GOV003"
 	}
 
-	//govo:ignore GOVO003 // only the loop header
+	//govo:ignore GOV003 // only the loop header
 L:
 	for c == "A" {
-		_ = c == "B" // want "GOVO003"
+		_ = c == "B" // want "GOV003"
 		break L
 	}
 
 	select {
-	//govo:ignore GOVO001 // only the communication
+	//govo:ignore GOV001 // only the communication
 	case ch <- "A":
-		ch <- "B" // want "GOVO001"
+		ch <- "B" // want "GOV001"
 	}
 
 	take(
-		//govo:ignore GOVO001 // want "GOVO004"
-		"X", // want "GOVO001"
+		//govo:ignore GOV001 // want "GOVD001"
+		"X", // want "GOV001"
 	)
 
-	//govo:ignore GOVO003 // want "GOVO004"
+	//govo:ignore GOV003 // want "GOVD001"
 }
 
-var afterDangling a.Code = "Z" // want "GOVO001"
+var afterDangling a.Code = "Z" // want "GOV001"
 
 func untypedExpressions(u uint, x, y int, f, g a.Flag, n, m a.Number) {
-	var typedCompare a.Flag = int(1) == int(1) // want "GOVO001: untyped constant used as protected type Flag"
+	var typedCompare a.Flag = int(1) == int(1) // want "GOV001: untyped constant used as protected type Flag"
 	_ = typedCompare
-	_ = a.Flag(int(1) == int(1)) // want "GOVO001: direct construction"
-	_ = a.Flag(x == y)           // want "GOVO001: direct construction"
-	_ = a.Number(1 << u)         // want "GOVO001: direct construction"
+	_ = a.Flag(int(1) == int(1)) // want "GOV001: direct construction"
+	_ = a.Flag(x == y)           // want "GOV001: direct construction"
+	_ = a.Number(1 << u)         // want "GOV001: direct construction"
 
-	var shifted a.Number = 1 << u // want "GOVO001: untyped expression used as protected type Number"
+	var shifted a.Number = 1 << u // want "GOV001: untyped expression used as protected type Number"
 	_ = shifted
-	var compared a.Flag = x == y // want "GOVO001: untyped expression used as protected type Flag"
+	var compared a.Flag = x == y // want "GOV001: untyped expression used as protected type Flag"
 	_ = compared
-	_ = f == (x == y) // want "GOVO003: untyped expression"
-	_ = n + (1 << u)  // want "GOVO003: untyped expression"
+	_ = f == (x == y) // want "GOV003: untyped expression"
+	_ = n + (1 << u)  // want "GOV003: untyped expression"
 
 	_ = a.Flag(f)
 	_ = n << u
@@ -165,14 +165,14 @@ func untypedExpressions(u uint, x, y int, f, g a.Flag, n, m a.Number) {
 type S struct{ N a.Number }
 
 func elided() {
-	_ = []*S{{N: 1}}               // want "GOVO001"
-	_ = map[string]*S{"a": {N: 2}} // want "GOVO001"
+	_ = []*S{{N: 1}}               // want "GOV001"
+	_ = map[string]*S{"a": {N: 2}} // want "GOV001"
 }
 
 func funcLit() {
-	//govo:ignore GOVO001 // only the argument, not the function literal body
+	//govo:ignore GOV001 // only the argument, not the function literal body
 	defer func(n a.Number) {
-		var m a.Number = 1 // want "GOVO001"
+		var m a.Number = 1 // want "GOV001"
 		_ = m + n
 	}(2)
 }
@@ -180,9 +180,9 @@ func funcLit() {
 // One diagnostic per untyped expression, even when go/types gives its
 // operands the protected type of the context.
 func noDuplicates(u uint, x, y int, n a.Number) {
-	var constant a.Number = 1 + 2 // want "GOVO001: untyped constant"
-	var shifted a.Number = (1 << u) + 1 // want "GOVO001: untyped expression"
-	var logical a.Flag = x == y && x > 0 // want "GOVO001: untyped expression"
-	_ = n == 1+2 // want "GOVO003: untyped constant"
+	var constant a.Number = 1 + 2 // want "GOV001: untyped constant"
+	var shifted a.Number = (1 << u) + 1 // want "GOV001: untyped expression"
+	var logical a.Flag = x == y && x > 0 // want "GOV001: untyped expression"
+	_ = n == 1+2 // want "GOV003: untyped constant"
 	_, _, _ = constant, shifted, logical
 }

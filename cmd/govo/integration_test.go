@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-var diagnosticLine = regexp.MustCompile(`(?m)^(.+\.go):(\d+):\d+: (GOVO\d{3}):`)
+var diagnosticLine = regexp.MustCompile(`(?m)^(.+\.go):(\d+):\d+: (GOV\d{3}):`)
 
 // TestIntegration builds the govo command and runs it both standalone and as
 // a go vet tool against the module in testdata/mod.
@@ -32,10 +32,10 @@ func TestIntegration(t *testing.T) {
 	}
 
 	const (
-		construction = "use/use.go:6: GOVO001"
-		unexported   = "use/use.go:7: GOVO003"
-		testFile     = "use/use_test.go:10: GOVO001"
-		tagged       = "tagged/tagged.go:7: GOVO001"
+		construction = "use/use.go:6: GOV001"
+		unexported   = "use/use.go:7: GOV003"
+		testFile     = "use/use_test.go:10: GOV001"
+		tagged       = "tagged/tagged.go:7: GOV001"
 	)
 
 	// Keep go vet and package loading independent of the developer's

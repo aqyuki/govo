@@ -12,18 +12,18 @@ type Key [2]byte // want Key:"&{}"
 //govo:factory Token
 //govo:converter Token
 func tokenView(t *Token, s *string) (Token, *string, *Token) {
-	_ = (*Code)(t) // want "GOVO001: direct construction of protected type Code"
+	_ = (*Code)(t) // want "GOV001: direct construction of protected type Code"
 	return *t, (*string)(t), (*Token)(s)
 }
 
 //govo:factory Token
 func NewToken(s *string) (Token, *Token) {
-	return Token(*s), (*Token)(s) // want `GOVO002: direct extraction from protected type Token; use a //govo:converter function$`
+	return Token(*s), (*Token)(s) // want `GOV002: direct extraction from protected type Token; use a //govo:converter function$`
 }
 
 //govo:converter Token
 func (t *Token) Raw() *string {
-	return (*string)(t) // want `GOVO001: direct construction of protected type Token; use a //govo:factory function$`
+	return (*string)(t) // want `GOV001: direct construction of protected type Token; use a //govo:factory function$`
 }
 
 //govo:factory Key
@@ -34,6 +34,6 @@ func keyView(k Key, raw []byte) (Key, *Key, *[2]byte) {
 
 // Unmarked functions in the type declaration file are not trusted.
 func unmarkedPointers(t *Token, raw []byte) {
-	_ = (*string)(t) // want "GOVO001: direct construction of protected type Token"
-	_ = (*Key)(raw)  // want "GOVO001: direct construction of protected type Key"
+	_ = (*string)(t) // want "GOV001: direct construction of protected type Token"
+	_ = (*Key)(raw)  // want "GOV001: direct construction of protected type Key"
 }
