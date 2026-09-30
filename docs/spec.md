@@ -27,11 +27,9 @@ Code outside the type declaration file should use an API such as `NewCode` or `C
 
 ## Eligible types
 
-In the initial version, a **defined type** is eligible for protection if its underlying type is a Go basic type (boolean, numeric, or string). It remains eligible when the right-hand side of its declaration names another defined type, provided its underlying type is basic. A type alias is not treated as a new protected type; operations through an alias of a protected type are detected as operations on the original protected type.
+A **defined type** is eligible for protection if its underlying type is a Go basic type (boolean, numeric, or string), an array, a slice, or a map. It remains eligible when the right-hand side of its declaration names another defined type, provided its underlying type is one of these. Thus, `type Codes []Code`, `type Set map[string]bool`, and the array-based `type UserID uuid.UUID` can be protected. A type alias is not treated as a new protected type; operations through an alias of a protected type are detected as operations on the original protected type.
 
-Types with slice, map, or array underlying types are outside the initial scope. Thus, `type Codes []Code` and the array-based `type UserID uuid.UUID` cannot be protected in the initial version.
-
-Types with struct, interface, channel, function, or pointer underlying types are deliberately excluded. Protecting those types is distinct from applying the rules to **protected types that appear within them or in operations involving them**. For example, the normal `Code` rules apply when assigning a `Code` to a struct field, sending one on a `chan Code`, or converting a value obtained by dereferencing a `*Code`. Even if `Codes` itself is not protected, an operation that makes an element of `Codes{"ABC"}` a `Code` is detected.
+Types with struct, interface, channel, function, or pointer underlying types are deliberately excluded, and marking one with `//govo:protect` is reported as `GOVO004`. Protecting those types is distinct from applying the rules to **protected types that appear within them or in operations involving them**. For example, the normal `Code` rules apply when assigning a `Code` to a struct field, sending one on a `chan Code`, or converting a value obtained by dereferencing a `*Code`. Even if `Codes` itself is not protected, an operation that makes an element of `Codes{"ABC"}` a `Code` is detected.
 
 ## Trusted boundary
 
@@ -47,6 +45,14 @@ Apart from these exceptions, implicit conversion of an untyped constant or other
 
 These markers are optional; a protected type need not have either one. They may be attached only to exported functions or methods in the same file as the protected type's declaration.
 
+### Array, slice, and map types
+
+For a protected type with an array, slice, or map underlying type, Go also permits construction and extraction without a conversion, because a value of an unnamed type such as `[]Code` is assignable to a defined type with the same underlying type and vice versa. With `type Codes []Code` protected, `var c Codes = raw`, `takeCodes(raw)`, and `return raw` in a function returning `Codes` (where `raw` is `[]Code`) are implicit construction, and `var raw []Code = codes`, `takeRaw(codes)`, and `[][]Code{codes}` are implicit extraction. They are reported like the corresponding explicit conversions, as `GOVO001` and `GOVO002`, outside the type declaration file and permitted inside it. Multi-valued expressions are checked value by value, as in `raw, err = parseCodes()` or `takeBoth(rawPair())`, including comma-ok expressions such as `raw, ok = byName[key]`. A comparison between a protected array and an unnamed array, as in `id == raw`, converts the unnamed operand to the protected type and is reported as `GOVO001`.
+
+A non-empty composite literal of the protected type, such as `Codes{code}`, `ID{1, 2}`, or `Set{"a": true}`, is direct construction and is reported as `GOVO001` outside the type declaration file. This includes literals whose type is elided, as in `[]ID{{1}}`, which are located at their opening brace. An empty literal such as `Codes{}` or `Set{}` holds no elements and is permitted in any file, like `make(Codes, 0)`, `nil`, and the zero value.
+
+Operations on the elements of a protected value are outside the rules, consistent with basic types, for which indexing, slicing, and `len` of a protected string and operations between protected values are not detected. Indexing and assigning to elements, `range`, slicing (`codes[1:]` and `id[:]`), and the built-in functions `len`, `cap`, `append`, `copy`, `delete`, and `clear` are therefore not reported. Arguments that only supply elements to copy, namely the arguments of `copy` and the argument spread by `append(s, x...)`, are permitted even when their type matches the parameter only through the shared underlying type, as in `append(raw, codes...)` and `copy(raw, codes)`. Other arguments of built-in functions are converted as a whole and follow the usual rules, so `append(lists, codes)` with `lists` of type `[][]Code` is implicit extraction (`GOVO002`), like `[][]Code{codes}`, and `delete(ids, raw)` with `ids` of type `map[ID]int` is implicit construction (`GOVO001`). The usual rules still apply when the element or key type is itself protected, as in `codes[0] = "X"` or `append(codes, "X")` for a protected `Code`. When elements must not be read or modified outside the type declaration file, wrap the collection in a struct with unexported fields.
+
 ## Detected operations
 
 With `Code` as the protected type, the following table gives representative examples. In the initial version, `GOVO001` covers ordinary uses in which an untyped constant is treated as a protected type, regardless of syntax. Operations and comparisons are classified under `GOVO003`, without an additional `GOVO001` at the same location. The exceptions described below apply to zero values, operations through type parameters, and declarations of protected typed constants in the type declaration file.
@@ -55,6 +61,7 @@ With `Code` as the protected type, the following table gives representative exam
 | --- | --- | --- |
 | Explicit construction | `Code(s)`, `Code("ABC")` | Report outside the type declaration file; conversions from the same type are permitted |
 | Explicit extraction | `string(code)`, `[]byte(code)`, `RawCode(code)` | Report outside the type declaration file when converting to another concrete type; conversions to the same type or an interface are permitted |
+| Composite construction and extraction | `Codes{code}`, `var c Codes = raw`, `var raw []Code = codes` (where `Codes` is a protected `[]Code`) | Report outside the type declaration file as `GOVO001` or `GOVO002`; empty literals are permitted |
 | Typed constant declaration | `const CodeABC Code = "ABC"`, specifications that inherit a type or expression | Report outside the type declaration file |
 | Implicit construction | `var c Code = "ABC"`, `UseCode("ABC")`, `return "ABC"` | Report in any file |
 | Composite literals and similar uses | `[]Code{"ABC"}`, `map[Code]int{"ABC": 1}`, `S{Code: "ABC"}` | Report when an untyped constant is used as a `Code` |
@@ -72,8 +79,8 @@ In the initial version, diagnostics for value operations are grouped by meaning,
 
 | Rule ID | Rule | Scope |
 | --- | --- | --- |
-| `GOVO001` | Invalid construction | Explicit conversions to a protected type, declarations of protected typed constants in other files, and implicit construction from untyped constants at ordinary use sites |
-| `GOVO002` | Extraction of the underlying representation | Explicit conversions from a protected type to another concrete type |
+| `GOVO001` | Invalid construction | Explicit conversions to a protected type, non-empty composite literals of a protected type and implicit conversions from unnamed array, slice, or map values in other files, declarations of protected typed constants in other files, and implicit construction from untyped constants at ordinary use sites |
+| `GOVO002` | Extraction of the underlying representation | Explicit conversions from a protected type to another concrete type, and implicit conversions of a protected array, slice, or map to an unnamed type |
 | `GOVO003` | Operations and comparisons with untyped constants | Comparisons, binary operations, compound assignments, `switch` cases, and similar operations in which an untyped constant is treated as a protected type |
 | `GOVO004` | Directive declarations and usage | Unknown or invalid directives, unused `ignore` directives, and missing reasons for `ignore` directives when reason checking is enabled |
 
@@ -122,7 +129,7 @@ A standalone comment line applies to the immediately following statement or decl
 
 The following statement or declaration is searched for only in the innermost declaration list, `const`/`var`/`type` group, block, or clause that contains the standalone comment. A standalone comment at the end of a block, or inside an expression such as between the arguments of a multiline call, has no target and is reported as `GOVO004`.
 
-Diagnostics are located at the syntax that causes them: the destination type name for an explicit conversion, the declared identifier for a protected typed constant, and the start of the constant expression for implicit conversion from an untyped constant or an operation or comparison involving one, and the `++` or `--` operator for an increment or decrement. If a statement has multiple offending constants, each receives a diagnostic. A standalone comment suppresses diagnostics in the header or expression of the following statement or declaration, but does not extend into the body of an `if` or `for`. A trailing comment suppresses every diagnostic whose cause is on its physical line; this includes the body of a single-line `if` when it is on that line. In a multiline call, a trailing comment on the closing parenthesis line does not suppress diagnostics for arguments on other lines.
+Diagnostics are located at the syntax that causes them: the destination type name for an explicit conversion, the type of a composite literal (or its opening brace when the type is elided), the start of the expression for an implicit conversion of an array, slice, or map value, the declared identifier for a protected typed constant, and the start of the constant expression for implicit conversion from an untyped constant or an operation or comparison involving one, and the `++` or `--` operator for an increment or decrement. If a statement has multiple offending constants, each receives a diagnostic. A standalone comment suppresses diagnostics in the header or expression of the following statement or declaration, but does not extend into the body of an `if` or `for`. A trailing comment suppresses every diagnostic whose cause is on its physical line; this includes the body of a single-line `if` when it is on that line. In a multiline call, a trailing comment on the closing parenthesis line does not suppress diagnostics for arguments on other lines.
 
 By default, omitting the reason from an `ignore` directive produces no diagnostic. When `ignore.missing-reason` is set to `error`, a missing reason is reported as `GOVO004`. Only missing reasons are disabled by default; diagnostics for unused `ignore` directives and invalid directives still apply. If rule IDs are listed, usage is checked separately for each ID, and an ID that suppresses no diagnostics is reported as unused. If IDs are omitted, the directive is reported as unused only when it suppresses no diagnostics at all.
 
@@ -143,7 +150,9 @@ ignore:
 - Go zero values are permitted: `var c Code` and `new(Code)` are not prohibited. Consequently, `govo` does not guarantee that every `Code` has passed validation in `NewCode`.
 - Construction or extraction through type parameters, and detection by tracing instantiations of generic functions, are outside the initial scope. The ordinary rules still apply to a direct conversion such as `Code(s)` written inside a generic function.
 - Direct writes through libraries or runtime mechanisms such as JSON, databases, and reflection are outside the detection scope.
-- Types with slice, map, array, struct, interface, channel, function, or pointer underlying types are ineligible for protection. Operations between protected values are outside the detection scope.
+- Types with struct, interface, channel, function, or pointer underlying types are ineligible for protection. Operations between protected values and operations on the elements of protected arrays, slices, and maps are outside the detection scope.
+- Go zero values extend to `make`, `nil`, and empty composite literals of protected array, slice, and map types, which are permitted.
+- Assignments by a `range` clause with `=`, as in `for _, codes = range rawLists`, are not checked for implicit construction or extraction.
 
 The initial version of `govo` detects the specified bypasses in ordinary Go code. It does not prevent every construction path involving zero values, type parameters, or runtime mechanisms.
 

@@ -30,7 +30,10 @@ type Alias = Code
 type Pointer unsafe.Pointer // want "GOVO004"
 
 //govo:protect
-type Codes []Code // want "GOVO004"
+type Record struct{ C Code } // want "GOVO004"
+
+//govo:protect
+type Channel chan Code // want "GOVO004"
 
 //govo:factory Code
 func NewOther(s string) Code { return Code(s) }

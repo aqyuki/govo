@@ -229,16 +229,17 @@ Each report is prefixed with `GOVO004: `. `converter` gives the same messages as
 
 | Rule | Reports |
 | ---- | ------- |
-| `GOVO001` | Construction of a protected type outside its declaration file, and implicit construction from untyped constants or untyped expressions such as comparisons in any file |
-| `GOVO002` | Explicit conversion from a protected type to another concrete type outside its declaration file |
+| `GOVO001` | Construction of a protected type outside its declaration file, including non-empty composite literals and implicit conversions from unnamed array, slice, or map values, and implicit construction from untyped constants or untyped expressions such as comparisons in any file |
+| `GOVO002` | Conversion from a protected type to another concrete type outside its declaration file, including implicit conversions of a protected array, slice, or map to an unnamed type |
 | `GOVO003` | Comparisons and operations with untyped constants or untyped expressions, including `x++` and `x--` |
 | `GOVO004` | Invalid, unattached, or unused directives, and missing `ignore` reasons when required |
 
 ## Scope and limitations
 
-Protected types must be defined types with a boolean, numeric, or string underlying type. Protected types declared in other packages within the same module, including unexported ones whose values are exposed through exported APIs, are also checked.
+Protected types must be defined types with a boolean, numeric, string, array, slice, or map underlying type. Protected types declared in other packages within the same module, including unexported ones whose values are exposed through exported APIs, are also checked.
 
-- Zero-value construction (`var code Code` or `new(Code)`) is allowed.
+- Zero-value construction (`var code Code` or `new(Code)`) is allowed, as are `make`, `nil`, and empty composite literals such as `Codes{}`.
+- Element operations on a protected array, slice, or map, such as indexing, `range`, slicing, `len`, `append`, `copy`, and `delete`, are not reported. Use a struct with unexported fields when elements must not be read or modified.
 - Comparisons and operations between protected values are not reported.
 - Construction or conversion through type parameters, and writes through JSON, databases, reflection, or similar mechanisms, are outside the scope of analysis.
 - Generated Go files (as recognized by `go/ast.IsGenerated`), vendored dependencies, external modules, and the standard library are excluded from analysis.

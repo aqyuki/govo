@@ -187,8 +187,8 @@ func (s *analyzerState) collectProtect(f *ast.File) {
 				continue
 			}
 
-			if !basicUnderlying(obj.Type()) {
-				s.issue(ts.Name.Pos(), ruleDirective, "protect requires a basic underlying type", f)
+			if !eligibleUnderlying(obj.Type()) {
+				s.issue(ts.Name.Pos(), ruleDirective, "protect requires a basic, array, slice, or map underlying type", f)
 				continue
 			}
 
@@ -236,9 +236,15 @@ func (s *analyzerState) markProtect(group *ast.CommentGroup) bool {
 	return protect
 }
 
-func basicUnderlying(t types.Type) bool {
-	b, ok := types.Unalias(t).Underlying().(*types.Basic)
-	return ok && b.Info()&types.IsUntyped == 0 && b.Info()&(types.IsBoolean|types.IsNumeric|types.IsString) != 0
+func eligibleUnderlying(t types.Type) bool {
+	switch u := types.Unalias(t).Underlying().(type) {
+	case *types.Basic:
+		return u.Info()&types.IsUntyped == 0 && u.Info()&(types.IsBoolean|types.IsNumeric|types.IsString) != 0
+	case *types.Array, *types.Slice, *types.Map:
+		return true
+	}
+
+	return false
 }
 
 func (s *analyzerState) protected(t types.Type) *protectedType {
