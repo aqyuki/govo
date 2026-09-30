@@ -1,0 +1,8 @@
+# Project configuration for Aikido tools. Aikido Safe Chain, which wraps
+# package managers such as pnpm to block malicious packages, reads only the
+# safe-chain section. See https://github.com/AikidoSec/safe-chain.
+safe-chain:
+  # Safe Chain hides npm packages newer than this many hours (24 by default)
+  # until they are validated. 0 disables that delay so that the exact versions
+  # pinned in pnpm-lock.yaml, including just-released ones, can be installed.
+  minimumPackageAgeHours: 0

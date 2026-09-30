@@ -1,0 +1,12 @@
+{
+  "name": "govo-development-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint:commit": "commitlint"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "21.2.3",
+    "@commitlint/config-conventional": "21.2.3"
+  }
+}
