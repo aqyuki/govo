@@ -197,6 +197,11 @@ func (s *analyzerState) call(c *ast.CallExpr) {
 func (s *analyzerState) conversion(c *ast.CallExpr, dest types.Type) {
 	source := s.pass.TypesInfo.TypeOf(c.Args[0])
 
+	if from, to, ok := aliasing(source, dest); ok {
+		s.aliasingConversion(ast.Unparen(c.Fun).Pos(), from, to)
+		return
+	}
+
 	pd, ps := s.protected(dest), s.protected(source)
 	if pd != nil && ps != nil && types.Identical(dest, source) && !s.untyped(c.Args[0]) {
 		return
@@ -215,6 +220,57 @@ func (s *analyzerState) conversion(c *ast.CallExpr, dest types.Type) {
 
 	if _, ok := dest.Underlying().(*types.Interface); !ok {
 		s.extractionIssue(c.Fun.Pos(), "direct", ps)
+	}
+}
+
+// aliasing reports whether a conversion from source to dest yields a pointer
+// that shares storage with the operand under another type: a conversion
+// between pointer types, as in (*string)(&code), or from a slice to an
+// array pointer, as in (*ID)(raw). It returns the types of that storage as
+// seen before and after the conversion.
+func aliasing(source, dest types.Type) (from, to types.Type, ok bool) {
+	if source == nil {
+		return nil, nil, false
+	}
+
+	ptr, ok := dest.Underlying().(*types.Pointer)
+	if !ok {
+		return nil, nil, false
+	}
+
+	switch u := source.Underlying().(type) {
+	case *types.Pointer:
+		return u.Elem(), ptr.Elem(), true
+	case *types.Slice:
+		return source, ptr.Elem(), true
+	}
+
+	return nil, nil, false
+}
+
+// aliasingConversion checks a conversion that makes the storage of a value
+// of type from accessible as type to. Reads and writes through the result
+// cross the type boundary in both directions, so each protected type
+// involved needs both a factory and a converter. Construction is reported
+// first, as for other conversions.
+func (s *analyzerState) aliasingConversion(pos token.Pos, from, to types.Type) {
+	if types.Identical(from, to) {
+		return
+	}
+
+	involved := []*protectedType{s.protected(to), s.protected(from)}
+	for _, p := range involved {
+		if p != nil && !s.mayConstruct(p) {
+			s.constructionIssue(pos, "direct", p)
+			return
+		}
+	}
+
+	for _, p := range involved {
+		if p != nil && !s.mayExtract(p) {
+			s.extractionIssue(pos, "direct", p)
+			return
+		}
 	}
 }
 

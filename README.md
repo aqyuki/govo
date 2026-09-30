@@ -151,7 +151,7 @@ type (
 
 ### Markers
 
-`factory` and `converter` are the only places where direct conversions are allowed. A `factory` may construct the types it names, including with non-empty composite literals and implicit conversions from unnamed array, slice, or map values, and a `converter` may extract their underlying representation. Each marker grants only its own direction, so a method such as `func (c Code) Upper() Code` that does both needs both markers. A conversion between two protected types needs a `factory` of the destination and a `converter` of the source. Function literals inside a marked function share its permission.
+`factory` and `converter` are the only places where direct conversions are allowed. A `factory` may construct the types it names, including with non-empty composite literals and implicit conversions from unnamed array, slice, or map values, and a `converter` may extract their underlying representation. Each marker grants only its own direction, so a method such as `func (c Code) Upper() Code` that does both needs both markers. A conversion between two protected types needs a `factory` of the destination and a `converter` of the source. A pointer conversion that shares a protected value's storage under another type, such as `(*string)(&code)` or `(*ID)(raw)` from a slice, allows both reads and writes, so it needs both markers for each protected type involved. Function literals inside a marked function share its permission.
 
 Markers can be attached to exported and unexported functions and methods, so internal helpers can be marked too. They also check the shape of the function. Each named type is checked separately, and a type that fails its check is reported as `GOVO004` and dropped from the marker, which then grants nothing for that type.
 
@@ -231,8 +231,8 @@ Each report is prefixed with `GOVO004: `. `converter` gives the same messages as
 
 | Rule | Reports |
 | ---- | ------- |
-| `GOVO001` | Construction of a protected type outside its `factory` functions, including non-empty composite literals and implicit conversions from unnamed array, slice, or map values; constants of a protected type declared outside its declaration file; and implicit construction from untyped constants or untyped expressions such as comparisons anywhere |
-| `GOVO002` | Conversion from a protected type to another concrete type outside its `converter` functions, including implicit conversions of a protected array, slice, or map to an unnamed type |
+| `GOVO001` | Construction of a protected type outside its `factory` functions, including pointer conversions such as `(*string)(&code)`, non-empty composite literals and implicit conversions from unnamed array, slice, or map values; constants of a protected type declared outside its declaration file; and implicit construction from untyped constants or untyped expressions such as comparisons anywhere |
+| `GOVO002` | Conversion from a protected type to another concrete type outside its `converter` functions, including pointer conversions in a `factory` that is not also a `converter`, and implicit conversions of a protected array, slice, or map to an unnamed type |
 | `GOVO003` | Comparisons and operations with untyped constants or untyped expressions, including `x++` and `x--` |
 | `GOVO004` | Invalid, unattached, or unused directives, and missing `ignore` reasons when required |
 
@@ -243,7 +243,7 @@ Protected types must be defined types with a boolean, numeric, string, array, sl
 - Zero-value construction (`var code Code` or `new(Code)`) is allowed, as are `make`, `nil`, and empty composite literals such as `Codes{}`.
 - Element operations on a protected array, slice, or map, such as indexing, `range`, slicing, `len`, `append`, `copy`, and `delete`, are not reported. Use a struct with unexported fields when elements must not be read or modified.
 - Comparisons and operations between protected values are not reported.
-- Construction or conversion through type parameters, and writes through JSON, databases, reflection, or similar mechanisms, are outside the scope of analysis.
+- Construction or conversion through type parameters or `unsafe.Pointer`, and writes through JSON, databases, reflection, or similar mechanisms, are outside the scope of analysis.
 - Generated Go files (as recognized by `go/ast.IsGenerated`), vendored dependencies, external modules, and the standard library are excluded from analysis.
 
 govo detects API bypasses, but does not guarantee that validation logic is correct or that every value has passed through a constructor. For details on directives, diagnostic rules, and the scope of exceptions, see the [detection specification](docs/spec.md).
