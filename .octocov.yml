@@ -1,0 +1,23 @@
+coverage:
+  paths:
+    - coverage.out
+
+testExecutionTime:
+  steps:
+    - Run tests
+
+comment:
+  if: is_pull_request
+  updatePrevious: true
+
+summary:
+  if: true
+
+report:
+  if: is_default_branch
+  datastores:
+    - artifact://${GITHUB_REPOSITORY}
+
+diff:
+  datastores:
+    - artifact://${GITHUB_REPOSITORY}

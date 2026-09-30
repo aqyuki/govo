@@ -1,0 +1,73 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":semanticCommits", "helpers:pinGitHubActionDigests"],
+  "timezone": "Asia/Tokyo",
+  "schedule": ["* * * * 1"],
+  "enabledManagers": ["gomod", "npm", "mise", "github-actions"],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "groupName": null,
+    "schedule": [],
+    "prCreation": "immediate"
+  },
+  "automerge": false,
+  "automergeType": "pr",
+  "ignoreTests": false,
+  "packageRules": [
+    {
+      "description": "Do not raise the minimum Go version automatically",
+      "matchManagers": ["gomod"],
+      "matchDepNames": ["go"],
+      "enabled": false
+    },
+    {
+      "matchManagers": ["npm", "mise"],
+      "matchUpdateTypes": ["major"],
+      "groupName": "npm major"
+    },
+    {
+      "matchManagers": ["npm", "mise"],
+      "matchUpdateTypes": ["minor"],
+      "groupName": "npm minor"
+    },
+    {
+      "matchManagers": ["npm", "mise"],
+      "matchUpdateTypes": ["patch"],
+      "groupName": "npm patch"
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["major"],
+      "groupName": "Go major"
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["minor"],
+      "groupName": "Go minor"
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["patch"],
+      "groupName": "Go patch"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["major"],
+      "groupName": "GitHub Actions major"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor"],
+      "groupName": "GitHub Actions minor"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["patch"],
+      "groupName": "GitHub Actions patch"
+    },
+    {
+      "matchUpdateTypes": ["patch"],
+      "automerge": true
+    }
+  ]
+}

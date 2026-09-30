@@ -1,0 +1,24 @@
+name: cleanup cache
+
+on:
+  # pull_request_target is required so that pull requests from forks also get a
+  # token that can delete caches. This workflow does not check out or run any
+  # code from the pull request.
+  pull_request_target:
+    types:
+      - closed
+
+permissions: {}
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Delete caches created by the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: gh cache delete --all --ref "refs/pull/$PR_NUMBER/merge" --succeed-on-no-caches

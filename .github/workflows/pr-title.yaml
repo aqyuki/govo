@@ -1,0 +1,62 @@
+name: pr title
+
+on:
+  pull_request:
+    # edited also fires for body or base branch changes. The check runs for
+    # every edit instead of being skipped so that a skipped run cannot replace
+    # a failed result for the same title.
+    types:
+      - opened
+      - edited
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  commitlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - id: node-version
+        uses: ./.github/actions/tool-version
+        with:
+          tool: node
+
+      - id: pnpm-version
+        uses: ./.github/actions/tool-version
+        with:
+          tool: pnpm
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ steps.node-version.outputs.version }}
+          package-manager-cache: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ steps.pnpm-version.outputs.version }}
+
+      - id: pnpm-store
+        name: Get pnpm store path
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-pnpm-${{ steps.pnpm-version.outputs.version }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-pnpm-${{ steps.pnpm-version.outputs.version }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check pull request title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: printf '%s\n' "$PR_TITLE" | pnpm exec commitlint --verbose
