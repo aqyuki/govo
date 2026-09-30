@@ -98,6 +98,13 @@ func shifts(n a.Number, u uint) {
 	n++       // want "GOV003"
 	n--       // want "GOV003"
 
+	// Scaling is permitted only in a scalar function of the type's file.
+	_ = n * 2 // want `GOV003: untyped constant scales protected type Number; use a //govo:scalar function$`
+	n /= 2    // want "GOV003: untyped constant scales"
+
+	var amount a.Amount
+	_ = amount.Half()
+
 	var i int
 	i++
 }

@@ -72,7 +72,8 @@ func (s *analyzerState) analyzeNode(root ast.Node, signature *types.Signature) {
 				// A shift count never takes the type of the shifted operand.
 			default:
 				if len(n.Lhs) == 1 && len(n.Rhs) == 1 {
-					s.implicit(n.Rhs[0], s.pass.TypesInfo.TypeOf(n.Lhs[0]), ruleOperation)
+					scaling := n.Tok == token.MUL_ASSIGN || n.Tok == token.QUO_ASSIGN
+					s.operand(n.Rhs[0], s.pass.TypesInfo.TypeOf(n.Lhs[0]), scaling)
 				}
 			}
 
@@ -394,13 +395,31 @@ func (s *analyzerState) binary(b *ast.BinaryExpr) {
 	// An untyped operand, as in (1 << u) + 1, has the protected type only
 	// because of the context. The enclosing use site reports the whole
 	// expression, so only a genuinely protected operand is checked here.
+	// Only a multiplier or a divisor scales the protected operand; a
+	// dividend, as in 100 / n, does not.
 	x, y := s.pass.TypesInfo.TypeOf(b.X), s.pass.TypesInfo.TypeOf(b.Y)
 	if s.protected(x) != nil && !s.untyped(b.X) {
-		s.implicit(b.Y, x, ruleOperation)
+		s.operand(b.Y, x, b.Op == token.MUL || b.Op == token.QUO)
 	}
 
 	if s.protected(y) != nil && !s.untyped(b.Y) {
-		s.implicit(b.X, y, ruleOperation)
+		s.operand(b.X, y, b.Op == token.MUL)
+	}
+}
+
+// operand checks expr, an operand of an operation with a value of the
+// protected type target. With scaling set, expr multiplies or divides that
+// value, so an untyped constant is a dimensionless scalar rather than a
+// value of the type, which a function with a scalar directive may use.
+func (s *analyzerState) operand(expr ast.Expr, target types.Type, scaling bool) {
+	p := s.protected(target)
+	if !scaling || p == nil || !s.untyped(expr) || s.pass.TypesInfo.Types[expr].Value == nil {
+		s.implicit(expr, target, ruleOperation)
+		return
+	}
+
+	if !s.mayScale(p) {
+		s.issue(expr.Pos(), ruleOperation, fmt.Sprintf("untyped constant scales protected type %s; use a //govo:%s function", p.name.Name(), directiveScalar), s.current)
 	}
 }
 
