@@ -213,7 +213,7 @@ These are reported as `GOVO004`. An invalid directive is ignored, but other vali
 | `//govo:protect Code` | `protect does not accept arguments` |
 | `//govo:protect` not above a type declaration | `protect is not attached to a type declaration` |
 | `//govo:protect` above a type alias | `protect requires a defined type` |
-| `//govo:protect` above `type Codes []string` | `protect requires a basic underlying type` |
+| `//govo:protect` above `type Point struct{ X, Y int }` | `protect requires a basic, array, slice, or map underlying type` |
 | `//govo:factory` not above a function or method | `factory requires a function or method` |
 | `//govo:factory` in a file with several protected types | `factory requires a type name unless this file declares exactly one protected type` |
 | `//govo:factory Other` where `Other` is not protected in this file | `factory: Other is not a protected type declared in this file` |
