@@ -4,9 +4,13 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"iter"
 	"maps"
 	"slices"
 	"strings"
+
+	"golang.org/x/tools/go/ast/edge"
+	"golang.org/x/tools/go/ast/inspector"
 )
 
 // ignoreDirective is a //govo:ignore directive and the rules it suppressed.
@@ -15,9 +19,11 @@ type ignoreDirective struct {
 	end      token.Pos
 	line     int
 	trailing bool
-	target   ast.Node
-	rules    map[string]bool
-	used     map[string]bool
+	// target is the declaration, spec, or statement that a directive on its
+	// own line covers. It is invalid for a trailing directive.
+	target inspector.Cursor
+	rules  map[string]bool
+	used   map[string]bool
 	// repeated holds the rule IDs listed more than once, in order.
 	repeated []string
 	all      bool
@@ -68,11 +74,13 @@ func (s *state) parseIgnore(file *ast.File, comment *ast.Comment, ids, reason st
 	}
 
 	if !ignore.trailing {
-		ignore.target = nextIgnoreTarget(file, comment)
-		if ignore.target == nil {
+		target, ok := nextIgnoreTarget(s.fileCursor(file), comment)
+		if !ok {
 			s.issue(comment.Pos(), ruleInvalidDirective, "ignore is not followed by a statement or declaration", file)
 			return
 		}
+
+		ignore.target = target
 	}
 
 	if ignore.reason == "" && s.config.Ignore.MissingReason == configMissingReasonError {
@@ -101,63 +109,60 @@ func (s *state) trailingIgnore(f *ast.File, comment *ast.Comment) bool {
 	return strings.TrimSpace(string(src[start:end])) != ""
 }
 
-// nextIgnoreTarget returns the declaration, spec, or statement that
-// immediately follows comment in the innermost declaration list, spec
-// group, block, or case clause containing it. It returns nil when the list
-// has no such element or comment is inside an element, such as between the
-// arguments of a call or at the end of a block.
-func nextIgnoreTarget(f *ast.File, comment *ast.Comment) ast.Node {
-	list := make([]ast.Node, 0, len(f.Decls))
-	for _, decl := range f.Decls {
-		list = append(list, decl)
+// nextIgnoreTarget returns the cursor of the declaration, spec, or
+// statement that immediately follows comment in the innermost declaration
+// list, spec group, block, or case clause of file containing it. It reports
+// false when the list has no such element or comment is inside an element,
+// such as between the arguments of a call or at the end of a block.
+func nextIgnoreTarget(file inspector.Cursor, comment *ast.Comment) (inspector.Cursor, bool) {
+	parent, list := file, edge.File_Decls
+
+	if inner, ok := file.FindByPos(comment.Pos(), comment.End()); ok {
+	enclosing:
+		for cursor := range inner.Enclosing() {
+			switch n := cursor.Node().(type) {
+			case *ast.GenDecl:
+				if n.Lparen.IsValid() {
+					parent, list = cursor, edge.GenDecl_Specs
+					break enclosing
+				}
+			case *ast.BlockStmt:
+				parent, list = cursor, edge.BlockStmt_List
+				break enclosing
+			case *ast.CaseClause:
+				parent, list = cursor, edge.CaseClause_Body
+				break enclosing
+			case *ast.CommClause:
+				parent, list = cursor, edge.CommClause_Body
+				break enclosing
+			}
+		}
 	}
 
-	ast.Inspect(f, func(n ast.Node) bool {
-		if n == nil {
-			return false
-		}
-
-		if _, ok := n.(*ast.File); !ok && (comment.Pos() < n.Pos() || n.End() < comment.End()) {
-			return false
-		}
-
-		switch n := n.(type) {
-		case *ast.GenDecl:
-			if n.Lparen.IsValid() {
-				list = ignoreCandidates(n.Specs)
-			}
-		case *ast.BlockStmt:
-			list = ignoreCandidates(n.List)
-		case *ast.CaseClause:
-			list = ignoreCandidates(n.Body)
-		case *ast.CommClause:
-			list = ignoreCandidates(n.Body)
-		}
-
-		return true
-	})
-
-	for _, n := range list {
+	for candidate := range ignoreCandidates(parent, list) {
+		n := candidate.Node()
 		if n.Pos() > comment.End() {
-			return n
+			return candidate, true
 		}
 
 		if n.End() > comment.Pos() {
-			return nil
+			break
 		}
 	}
 
-	return nil
+	return inspector.Cursor{}, false
 }
 
-// ignoreCandidates converts list to the candidates for an ignore target.
-func ignoreCandidates[N ast.Node](list []N) []ast.Node {
-	out := make([]ast.Node, len(list))
-	for i, n := range list {
-		out[i] = n
+// ignoreCandidates returns the children of parent in the list that list
+// names: the candidates for an ignore target, in order.
+func ignoreCandidates(parent inspector.Cursor, list edge.Kind) iter.Seq[inspector.Cursor] {
+	return func(yield func(inspector.Cursor) bool) {
+		for child := range parent.Children() {
+			if child.ParentEdgeKind() == list && !yield(child) {
+				return
+			}
+		}
 	}
-
-	return out
 }
 
 // applyIgnores reports whether an ignore directive suppresses problem, and
@@ -279,29 +284,32 @@ func (s *state) ignoreApplies(ignore *ignoreDirective, pos token.Pos) bool {
 		return s.pass.Fset.Position(pos).Line == ignore.line
 	}
 
+	if !ignore.target.Valid() {
+		return false
+	}
+
 	target := ignore.target
-	if target == nil || pos < ignore.end || pos > target.End() {
+	if pos < ignore.end || pos > target.Node().End() {
 		return false
 	}
 
 	// Comments between the directive and its target, such as the other
 	// directives in a doc comment, are covered, too.
-	if pos < target.Pos() {
+	if pos < target.Node().Pos() {
 		return true
 	}
 
 	// A label does not change which statement the directive covers.
 	for {
-		labeled, ok := target.(*ast.LabeledStmt)
-		if !ok {
+		if _, ok := target.Node().(*ast.LabeledStmt); !ok {
 			break
 		}
 
-		target = labeled.Stmt
+		target = target.ChildAt(edge.LabeledStmt_Stmt, -1)
 	}
 
 	// Bodies of function literals in the target are blocks, too.
-	return inIgnoreTargetHeader(target, pos) && !inIgnoreTargetFuncLitBody(target, pos)
+	return inIgnoreTargetHeader(target.Node(), pos) && !inIgnoreTargetFuncLitBody(target, pos)
 }
 
 // inIgnoreTargetHeader reports whether pos, which is inside target, is
@@ -338,21 +346,24 @@ func inIgnoreTargetHeader(target ast.Node, pos token.Pos) bool {
 }
 
 // inIgnoreTargetFuncLitBody reports whether pos is inside the body of a
-// function literal in root, an ignore target.
-func inIgnoreTargetFuncLitBody(root ast.Node, pos token.Pos) bool {
-	found := false
+// function literal in target, the cursor of an ignore target.
+func inIgnoreTargetFuncLitBody(target inspector.Cursor, pos token.Pos) bool {
+	// The range [pos, pos+1) selects the node that holds the token at pos,
+	// not one that ends there.
+	inner, ok := target.FindByPos(pos, pos+1)
+	if !ok {
+		return false
+	}
 
-	ast.Inspect(root, func(n ast.Node) bool {
-		if found || n == nil || pos < n.Pos() || n.End() <= pos {
-			return false
+	for cursor := range inner.Enclosing((*ast.FuncLit)(nil)) {
+		if !target.Contains(cursor) {
+			break
 		}
 
-		if lit, ok := n.(*ast.FuncLit); ok && pos >= lit.Body.Lbrace {
-			found = true
+		if pos >= cursor.Node().(*ast.FuncLit).Body.Lbrace {
+			return true
 		}
+	}
 
-		return !found
-	})
-
-	return found
+	return false
 }

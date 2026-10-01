@@ -5,16 +5,38 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+
+	"golang.org/x/tools/go/ast/edge"
+	"golang.org/x/tools/go/ast/inspector"
 )
 
-// walkFile checks the declarations of f, each with the permission that
-// its markers grant.
+// walkedNodes are the node types that walkNode checks.
+var walkedNodes = []ast.Node{
+	(*ast.FuncLit)(nil),
+	(*ast.CallExpr)(nil),
+	(*ast.GenDecl)(nil),
+	(*ast.AssignStmt)(nil),
+	(*ast.IncDecStmt)(nil),
+	(*ast.ReturnStmt)(nil),
+	(*ast.CompositeLit)(nil),
+	(*ast.SendStmt)(nil),
+	(*ast.IndexExpr)(nil),
+	(*ast.BinaryExpr)(nil),
+	(*ast.SwitchStmt)(nil),
+}
+
+// walkFile checks the declarations of the file at file, each with the
+// permission that its markers grant.
 //
 //declscope:package // analyzer.go runs it for each file
-func (s *state) walkFile(f *ast.File) {
-	for _, decl := range f.Decls {
+func (s *state) walkFile(file inspector.Cursor) {
+	for decl := range file.Children() {
+		if _, ok := decl.Node().(ast.Decl); !ok {
+			continue
+		}
+
 		s.grant = nil
-		if fn, ok := decl.(*ast.FuncDecl); ok {
+		if fn, ok := decl.Node().(*ast.FuncDecl); ok {
 			s.grant = s.grants[fn]
 		}
 
@@ -24,17 +46,17 @@ func (s *state) walkFile(f *ast.File) {
 	s.grant = nil
 }
 
-func (s *state) walkNode(root ast.Node, signature *types.Signature) {
-	if fn, ok := root.(*ast.FuncDecl); ok {
+func (s *state) walkNode(root inspector.Cursor, signature *types.Signature) {
+	if fn, ok := root.Node().(*ast.FuncDecl); ok {
 		sig, _ := s.pass.TypesInfo.TypeOf(fn.Name).(*types.Signature)
 		signature = sig
 	}
 
-	ast.Inspect(root, func(n ast.Node) bool {
-		switch n := n.(type) {
+	root.Inspect(walkedNodes, func(cursor inspector.Cursor) bool {
+		switch n := cursor.Node().(type) {
 		case *ast.FuncLit:
 			if sig, ok := s.pass.TypesInfo.TypeOf(n).(*types.Signature); ok {
-				s.walkNode(n.Body, sig)
+				s.walkNode(cursor.ChildAt(edge.FuncLit_Body, -1), sig)
 				return false
 			}
 
@@ -50,8 +72,8 @@ func (s *state) walkNode(root ast.Node, signature *types.Signature) {
 				// The type declaration file may declare protected constants
 				// with explicit conversions, as in const A = Code("A").
 				s.inConst = true
-				for _, spec := range n.Specs {
-					s.walkNode(spec, signature)
+				for i := range n.Specs {
+					s.walkNode(cursor.ChildAt(edge.GenDecl_Specs, i), signature)
 				}
 
 				s.inConst = false
