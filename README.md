@@ -119,7 +119,7 @@ ignore:
 
 - The file is `.govo.yaml` in the tool's current working directory. Parent directories are not searched, and when the file does not exist the defaults apply.
 - [`-config`](#flags) names one file, reads no other, and takes precedence over `.govo.yaml`.
-- Unknown keys are ignored, and an invalid value for a known key is an error.
+- An unknown key, such as a misspelled `test` for `tests`, and an invalid value for a known key are errors.
 - govo has no warning level: every diagnostic fails the command.
 
 ## Directives

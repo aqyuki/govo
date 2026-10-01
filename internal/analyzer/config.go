@@ -90,6 +90,8 @@ func loadConfig() (Config, error) {
 	var raw rawConfig
 
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+
 	if err := decoder.Decode(&raw); err != nil {
 		if errors.Is(err, io.EOF) {
 			return config, nil
