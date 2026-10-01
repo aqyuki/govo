@@ -8,13 +8,18 @@ import (
 	"strings"
 )
 
-// errHelp reports a "govo help" invocation. go vet's usage refers users to it.
-var errHelp = errors.New("help requested")
+// errHelpArg reports a "govo help" invocation. go vet's usage refers users to it.
+//
+//declscope:package // main.go prints the usage for it
+var errHelpArg = errors.New("help requested")
 
-// The singlechecker driver owns parsing. This adapter only locates package
-// operands, extracts -tags for package loading, and applies govo's CLI policy.
+// prepareArgs adapts the command line for the singlechecker driver, which
+// owns parsing. It only locates package operands, extracts -tags for package
+// loading, and applies govo's CLI policy.
+//
+//declscope:package // main.go passes the result to the driver
 func prepareArgs(args []string, analyzerFlags *flag.FlagSet) ([]string, string, error) {
-	if vetInvocation(args) {
+	if argsFromVet(args) {
 		return args, "", nil
 	}
 
@@ -34,8 +39,8 @@ func prepareArgs(args []string, analyzerFlags *flag.FlagSet) ([]string, string, 
 			break
 		}
 
-		name, value, inline := splitFlag(arg)
-		if !flagTakesValue(name, analyzerFlags) {
+		name, value, inline := splitFlagArg(arg)
+		if !flagArgTakesValue(name, analyzerFlags) {
 			continue
 		}
 
@@ -60,7 +65,7 @@ func prepareArgs(args []string, analyzerFlags *flag.FlagSet) ([]string, string, 
 
 	packages := args[packageStart:]
 	if len(packages) > 0 && packages[0] == "help" {
-		return nil, "", errHelp
+		return nil, "", errHelpArg
 	}
 
 	for _, pkg := range packages {
@@ -76,7 +81,8 @@ func prepareArgs(args []string, analyzerFlags *flag.FlagSet) ([]string, string, 
 	return args, tags, nil
 }
 
-func vetInvocation(args []string) bool {
+// argsFromVet reports whether go vet invoked govo as its vet tool.
+func argsFromVet(args []string) bool {
 	if len(args) == 1 {
 		arg := args[0]
 		if arg == "-flags" || arg == "--flags" || strings.HasPrefix(arg, "-V=") || strings.HasPrefix(arg, "--V=") {
@@ -88,7 +94,8 @@ func vetInvocation(args []string) bool {
 	return len(args) > 0 && filepath.IsAbs(args[len(args)-1]) && filepath.Base(args[len(args)-1]) == "vet.cfg"
 }
 
-func splitFlag(arg string) (name, value string, inline bool) {
+// splitFlagArg splits a flag argument into its name and inline value.
+func splitFlagArg(arg string) (name, value string, inline bool) {
 	name = strings.TrimLeft(arg, "-")
 	if before, after, ok := strings.Cut(name, "="); ok {
 		return before, after, true
@@ -97,7 +104,8 @@ func splitFlag(arg string) (name, value string, inline bool) {
 	return name, "", false
 }
 
-func flagTakesValue(name string, analyzerFlags *flag.FlagSet) bool {
+// flagArgTakesValue reports whether the flag called name takes a value.
+func flagArgTakesValue(name string, analyzerFlags *flag.FlagSet) bool {
 	if f := analyzerFlags.Lookup(name); f != nil {
 		boolFlag, ok := f.Value.(interface{ IsBoolFlag() bool })
 		return !ok || !boolFlag.IsBoolFlag()

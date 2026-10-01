@@ -1,10 +1,15 @@
+// This file is the package's API and the analysis state that the other
+// files read and update.
+//declscope:core
+
 // Package analyzer implements checks for protected Go value objects.
 package analyzer
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
-	"go/types"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -16,24 +21,26 @@ var Analyzer = newAnalyzer()
 
 // Rule IDs for protected types have the GOV prefix and rule IDs for
 // directives the GOVD prefix, so each category is numbered independently.
+//
+//declscope:package // every check reports under these IDs
 const (
 	ruleConstruction = "GOV001"
-	ruleExtraction   = "GOV002"
-	ruleOperation    = "GOV003"
+	//declscope:private
+	ruleExtraction = "GOV002"
+	ruleOperation  = "GOV003"
 
 	ruleInvalidDirective = "GOVD001"
 	ruleUnusedIgnore     = "GOVD002"
 	ruleMissingReason    = "GOVD003"
 )
 
+// knownRules lists the rule IDs that an ignore directive may name.
+//
+//declscope:package // ignore.go validates ignore directives against it
 var knownRules = []string{
 	ruleConstruction, ruleExtraction, ruleOperation,
 	ruleInvalidDirective, ruleUnusedIgnore, ruleMissingReason,
 }
-
-type protectedFact struct{}
-
-func (*protectedFact) AFact() {}
 
 func newAnalyzer() *analysis.Analyzer {
 	a := &analysis.Analyzer{
@@ -47,57 +54,58 @@ func newAnalyzer() *analysis.Analyzer {
 	return a
 }
 
-type protectedType struct {
-	name *types.TypeName
-	file *ast.File // nil for an imported protected type
-}
-
 type fileInfo struct {
 	name      string
 	generated bool
-	protected []*protectedType // protected types declared in this file
 	src       []byte
 	srcErr    error
 	srcLoaded bool
 }
 
-type analyzerState struct {
-	pass   *analysis.Pass
-	config Config
-	files  map[*ast.File]*fileInfo
-	local  map[*types.TypeName]*protectedType
-	// imported caches fact lookups; a nil value records a type that is not protected.
-	imported map[*types.TypeName]*protectedType
-	// protectComments holds //govo:protect comments attached to a type declaration.
-	protectComments map[*ast.Comment]bool
+// state is the state of one analysis pass.
+//
+//declscope:package // the methods of every check are declared on it
+type state struct {
+	pass     *analysis.Pass
+	config   Config
+	protects protectedTypes
 	// grants holds the protected types that valid factory, converter, op,
 	// and scalar directives permit each function to construct, extract, or
 	// scale.
 	grants  map[*ast.FuncDecl]*grant
-	issues  []issue
-	ignore  []*ignoreDirective
+	ignores ignoreList
 	current *ast.File
 	// grant is the permission of the function declaration being analyzed,
 	// or nil outside a marked function.
 	grant *grant
 	// inConst is set while a const declaration is analyzed.
 	inConst bool
+	//declscope:private
+	files map[*ast.File]*fileInfo
+	//declscope:private
+	issues []issue
 }
 
 // grant records the protected types that a marked function may construct
 // (factory or op) or extract (converter or op) with direct conversions, and
 // those that it may scale by untyped constants (scalar).
+//
+//declscope:package // directive.go grants it and the checks consult it
 type grant struct {
 	construct map[*protectedType]bool
 	extract   map[*protectedType]bool
 	scale     map[*protectedType]bool
 }
 
+// issue is a diagnostic waiting for ignore directives to be applied.
+//
+//declscope:package // ignore.go matches issues against ignore directives
 type issue struct {
-	pos     token.Pos
-	rule    string
+	pos  token.Pos
+	rule string
+	file *ast.File
+	//declscope:private
 	message string
-	file    *ast.File
 }
 
 func run(pass *analysis.Pass) (any, error) {
@@ -110,14 +118,12 @@ func run(pass *analysis.Pass) (any, error) {
 		return nil, err
 	}
 
-	s := &analyzerState{
-		pass:            pass,
-		config:          config,
-		files:           make(map[*ast.File]*fileInfo),
-		local:           make(map[*types.TypeName]*protectedType),
-		imported:        make(map[*types.TypeName]*protectedType),
-		protectComments: make(map[*ast.Comment]bool),
-		grants:          make(map[*ast.FuncDecl]*grant),
+	s := &state{
+		pass:     pass,
+		config:   config,
+		files:    make(map[*ast.File]*fileInfo),
+		protects: newProtectedTypes(),
+		grants:   make(map[*ast.FuncDecl]*grant),
 	}
 
 	for _, f := range pass.Files {
@@ -136,12 +142,26 @@ func run(pass *analysis.Pass) (any, error) {
 			continue
 		}
 
-		s.analyzeFile(f)
+		s.walkFile(f)
 	}
 
 	s.reportIssues()
 
 	return nil, nil
+}
+
+// reportIssues reports every issue that no ignore directive suppresses, and
+// then the ignore directives that suppressed nothing.
+func (s *state) reportIssues() {
+	for _, problem := range s.issues {
+		if s.skipFile(problem.file) || s.applyIgnores(problem) {
+			continue
+		}
+
+		s.pass.Reportf(problem.pos, "%s: %s", problem.rule, problem.message)
+	}
+
+	s.reportUnusedIgnores()
 }
 
 func excludedPackage(pass *analysis.Pass) bool {
@@ -185,7 +205,10 @@ func externalModule(module *analysis.Module) bool {
 	return module.Version != "" || module.Dir != "" || module.GoMod != "" || module.Replace != nil
 }
 
-func (s *analyzerState) skipFile(f *ast.File) bool {
+// skipFile reports whether diagnostics in f are left out.
+//
+//declscope:package // ignore.go leaves out unused ignores in the same files
+func (s *state) skipFile(f *ast.File) bool {
 	info := s.files[f]
 	if info.generated {
 		return true
@@ -194,123 +217,12 @@ func (s *analyzerState) skipFile(f *ast.File) bool {
 	return !s.config.Tests && strings.HasSuffix(info.name, "_test.go")
 }
 
-func (s *analyzerState) collectProtect(f *ast.File) {
-	for _, decl := range f.Decls {
-		gd, ok := decl.(*ast.GenDecl)
-		if !ok || gd.Tok != token.TYPE {
-			continue
-		}
-
-		for _, spec := range gd.Specs {
-			ts := spec.(*ast.TypeSpec)
-
-			if !s.markProtect(typeSpecDoc(gd, ts)) {
-				continue
-			}
-
-			obj, ok := s.pass.TypesInfo.Defs[ts.Name].(*types.TypeName)
-			if !ok || obj.IsAlias() {
-				s.issue(ts.Name.Pos(), ruleInvalidDirective, "protect requires a defined type", f)
-				continue
-			}
-
-			if !eligibleUnderlying(obj.Type()) {
-				s.issue(ts.Name.Pos(), ruleInvalidDirective, "protect requires a basic, array, slice, or map underlying type", f)
-				continue
-			}
-
-			p := &protectedType{name: obj, file: f}
-
-			s.local[obj] = p
-			s.files[f].protected = append(s.files[f].protected, p)
-
-			// Unexported types need facts too: their values can reach other
-			// packages through exported functions, fields, and aliases.
-			s.pass.ExportObjectFact(obj, new(protectedFact))
-		}
-	}
-}
-
-// typeSpecDoc returns the doc comment that applies to ts. A declaration's
-// doc comment applies to its spec only when the declaration is not grouped.
-func typeSpecDoc(gd *ast.GenDecl, ts *ast.TypeSpec) *ast.CommentGroup {
-	if ts.Doc == nil && gd.Lparen == token.NoPos {
-		return gd.Doc
-	}
-
-	return ts.Doc
-}
-
-// markProtect records every protect directive in group as attached and
-// reports whether one of them is valid. collectDirectives reports arguments.
-func (s *analyzerState) markProtect(group *ast.CommentGroup) bool {
-	if group == nil {
-		return false
-	}
-
-	protect := false
-
-	for _, c := range group.List {
-		command, args, ok := parseDirective(c.Text)
-		if !ok || command != directiveProtect {
-			continue
-		}
-
-		s.protectComments[c] = true
-		protect = protect || args == ""
-	}
-
-	return protect
-}
-
-func eligibleUnderlying(t types.Type) bool {
-	switch u := types.Unalias(t).Underlying().(type) {
-	case *types.Basic:
-		return u.Info()&types.IsUntyped == 0 && u.Info()&(types.IsBoolean|types.IsNumeric|types.IsString) != 0
-	case *types.Array, *types.Slice, *types.Map:
-		return true
-	}
-
-	return false
-}
-
-func (s *analyzerState) protected(t types.Type) *protectedType {
-	if t == nil {
-		return nil
-	}
-
-	name, ok := types.Unalias(t).(*types.Named)
-	if !ok {
-		return nil
-	}
-
-	obj := name.Obj()
-	if p := s.local[obj]; p != nil {
-		return p
-	}
-
-	if obj.Pkg() == nil || obj.Pkg() == s.pass.Pkg {
-		return nil
-	}
-
-	if p, ok := s.imported[obj]; ok {
-		return p
-	}
-
-	var p *protectedType
-	if s.pass.ImportObjectFact(obj, new(protectedFact)) {
-		p = &protectedType{name: obj}
-	}
-
-	s.imported[obj] = p
-
-	return p
-}
-
 // mayConstruct reports whether the code being analyzed may construct p
 // directly: in a function marked as a factory of p, or in a const
 // declaration in the file that declares p.
-func (s *analyzerState) mayConstruct(p *protectedType) bool {
+//
+//declscope:package // the conversion checks consult it
+func (s *state) mayConstruct(p *protectedType) bool {
 	if p.file != s.current {
 		return false
 	}
@@ -321,17 +233,59 @@ func (s *analyzerState) mayConstruct(p *protectedType) bool {
 // mayExtract reports whether the code being analyzed may extract the
 // underlying representation of p directly: in a function marked as a
 // converter of p.
-func (s *analyzerState) mayExtract(p *protectedType) bool {
+//
+//declscope:package // the conversion checks consult it
+func (s *state) mayExtract(p *protectedType) bool {
 	return p.file == s.current && s.grant != nil && s.grant.extract[p]
 }
 
 // mayScale reports whether the code being analyzed may multiply or divide a
 // value of p by an untyped constant: in a function with a scalar directive
 // for p.
-func (s *analyzerState) mayScale(p *protectedType) bool {
+//
+//declscope:package // operation.go consults it for scaled operands
+func (s *state) mayScale(p *protectedType) bool {
 	return p.file == s.current && s.grant != nil && s.grant.scale[p]
 }
 
-func (s *analyzerState) issue(pos token.Pos, rule, msg string, f *ast.File) {
+// source returns the contents of f, reading the file at most once.
+//
+//declscope:package // ignore.go reads the line of an ignore directive
+func (s *state) source(f *ast.File) ([]byte, error) {
+	info := s.files[f]
+	if !info.srcLoaded {
+		if s.pass.ReadFile != nil {
+			info.src, info.srcErr = s.pass.ReadFile(info.name)
+		} else {
+			info.src, info.srcErr = os.ReadFile(info.name)
+		}
+
+		info.srcLoaded = true
+	}
+
+	return info.src, info.srcErr
+}
+
+// issue records a diagnostic, which reportIssues reports unless an ignore
+// directive suppresses it.
+//
+//declscope:package // every check records its diagnostics through it
+func (s *state) issue(pos token.Pos, rule, msg string, f *ast.File) {
 	s.issues = append(s.issues, issue{pos: pos, rule: rule, message: msg, file: f})
+}
+
+// constructionIssue reports a construction of p outside its factories and
+// points to the marker that permits it.
+//
+//declscope:package // conversions and composite literals construct values
+func (s *state) constructionIssue(pos token.Pos, kind string, p *protectedType) {
+	s.issue(pos, ruleConstruction, fmt.Sprintf("%s construction of protected type %s; use a //govo:%s function", kind, p.name.Name(), directiveFactory), s.current)
+}
+
+// extractionIssue reports an extraction from p outside its converters and
+// points to the marker that permits it.
+//
+//declscope:package // conversion.go reports extractions
+func (s *state) extractionIssue(pos token.Pos, kind string, p *protectedType) {
+	s.issue(pos, ruleExtraction, fmt.Sprintf("%s extraction from protected type %s; use a //govo:%s function", kind, p.name.Name(), directiveConverter), s.current)
 }

@@ -41,8 +41,8 @@ func TestPrepareArgs(t *testing.T) {
 
 func TestPrepareArgsHelp(t *testing.T) {
 	for _, args := range [][]string{{"help"}, {"help", "config"}, {"-config=x.yaml", "help"}} {
-		if _, _, err := prepareArgs(args, &govo.Analyzer.Flags); !errors.Is(err, errHelp) {
-			t.Errorf("prepareArgs(%q) error = %v, want errHelp", args, err)
+		if _, _, err := prepareArgs(args, &govo.Analyzer.Flags); !errors.Is(err, errHelpArg) {
+			t.Errorf("prepareArgs(%q) error = %v, want errHelpArg", args, err)
 		}
 	}
 
@@ -60,7 +60,7 @@ func TestVetInvocation(t *testing.T) {
 		}
 	}
 
-	if vetInvocation([]string{"-config", "/tmp/custom.cfg"}) {
+	if argsFromVet([]string{"-config", "/tmp/custom.cfg"}) {
 		t.Fatal("explicit config mistaken for vet protocol")
 	}
 }
@@ -70,7 +70,7 @@ func TestAnalyzerFlagKinds(t *testing.T) {
 	flags.Bool("enabled", false, "")
 	flags.String("path", "", "")
 
-	if flagTakesValue("enabled", &flags) || !flagTakesValue("path", &flags) {
+	if flagArgTakesValue("enabled", &flags) || !flagArgTakesValue("path", &flags) {
 		t.Fatal("analyzer flag kind not recognized")
 	}
 }

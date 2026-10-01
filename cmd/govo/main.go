@@ -19,7 +19,7 @@ func main() {
 	flag.CommandLine.Usage = func() { printUsage(flag.CommandLine.Output()) }
 
 	args, tags, err := prepareArgs(os.Args[1:], &govo.Analyzer.Flags)
-	if errors.Is(err, errHelp) {
+	if errors.Is(err, errHelpArg) {
 		printUsage(os.Stdout)
 		os.Exit(0)
 	}
