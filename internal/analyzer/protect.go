@@ -117,7 +117,7 @@ func (s *state) markProtect(group *ast.CommentGroup) bool {
 	protect := false
 
 	for _, c := range group.List {
-		command, args, ok := parseDirective(c.Text)
+		command, args, _, ok := parseDirective(c.Text)
 		if !ok || command != directiveProtect {
 			continue
 		}

@@ -148,6 +148,8 @@ Each type named in an `op` directive must pass both checks: the receiver or an a
 
 Each type named in a `scalar` directive must have a numeric underlying type, and the function must be a `factory` or `op` of that type with a valid marker. `GOVD001` is reported for a type that fails either condition, and the function does not gain permission to scale it.
 
+In every directive, text from the first `//` after `//govo:` is not parsed as arguments, so `//govo:factory Code // needed for compatibility` names only `Code`. Only `ignore` treats that text as its reason; other directives ignore it.
+
 Unknown `govo` directives, extra arguments, and directives that cannot be attached to a target are reported as `GOVD001`, and the invalid directive is ignored. Such diagnostics do not invalidate other valid directives at the same location.
 
 An `ignore` directive may specify comma-separated rule IDs of either category; omitting them targets all rules. `GOVD002` is determined after suppression, so it cannot be suppressed, and listing it is reported as `GOVD001`, like an unknown rule ID. A reason uses the same `// reason` form as golangci-lint.

@@ -27,13 +27,11 @@ type ignoreDirective struct {
 //declscope:package // state holds the list
 type ignoreList []*ignoreDirective
 
-// parseIgnore validates an ignore directive and records it.
+// parseIgnore validates an ignore directive, whose rule IDs are ids, and
+// records it.
 //
 //declscope:package // directive.go hands ignore directives to it
-func (s *state) parseIgnore(file *ast.File, comment *ast.Comment, args string) {
-	ids, reason, _ := strings.Cut(args, "//")
-	ids = strings.TrimSpace(ids)
-
+func (s *state) parseIgnore(file *ast.File, comment *ast.Comment, ids, reason string) {
 	ignore := &ignoreDirective{
 		pos:      comment.Pos(),
 		line:     s.pass.Fset.Position(comment.Pos()).Line,
@@ -41,7 +39,7 @@ func (s *state) parseIgnore(file *ast.File, comment *ast.Comment, args string) {
 		file:     file,
 		rules:    make(map[string]bool),
 		used:     make(map[string]bool),
-		reason:   strings.TrimSpace(reason),
+		reason:   reason,
 	}
 
 	if ids == "" {
