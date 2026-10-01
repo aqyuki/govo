@@ -30,9 +30,10 @@ const (
 	ruleExtraction = "GOV002"
 	ruleOperation  = "GOV003"
 
-	ruleInvalidDirective = "GOVD001"
-	ruleUnusedIgnore     = "GOVD002"
-	ruleMissingReason    = "GOVD003"
+	ruleInvalidDirective   = "GOVD001"
+	ruleUnusedIgnore       = "GOVD002"
+	ruleMissingReason      = "GOVD003"
+	ruleRedundantDirective = "GOVD004"
 )
 
 // knownRules lists the rule IDs that an ignore directive may name.
@@ -40,7 +41,7 @@ const (
 //declscope:package // ignore.go validates ignore directives against it
 var knownRules = []string{
 	ruleConstruction, ruleExtraction, ruleOperation,
-	ruleInvalidDirective, ruleUnusedIgnore, ruleMissingReason,
+	ruleInvalidDirective, ruleUnusedIgnore, ruleMissingReason, ruleRedundantDirective,
 }
 
 func newAnalyzer() *analysis.Analyzer {
@@ -152,7 +153,7 @@ func run(pass *analysis.Pass) (any, error) {
 }
 
 // reportIssues reports every issue that no ignore directive suppresses, and
-// then the ignore directives that suppressed nothing.
+// then the ignore directives that are redundant or suppressed nothing.
 func (s *state) reportIssues() {
 	for _, problem := range s.issues {
 		if s.skipFile(problem.file) || s.applyIgnores(problem) {
@@ -162,6 +163,7 @@ func (s *state) reportIssues() {
 		s.report(problem.pos, problem.rule, problem.message)
 	}
 
+	s.reportRedundantIgnores()
 	s.reportUnusedIgnores()
 }
 

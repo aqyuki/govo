@@ -173,6 +173,7 @@ Markers can be attached to exported and unexported functions and methods, so int
 - The type names may be omitted when the file declares a single protected type. With more than one, name them.
 - List several types on one line, separated by spaces, or repeat the directive. Both forms name the same set.
 - A marker on a declaration in another file than the type is reported as `GOVD001` and ignored.
+- Name each type once per function and command. A repeated type, or a `factory` or `converter` of a type that an `op` of the same function already names, is reported as `GOVD004`.
 
 ```go
 //govo:factory Code RegionCode
@@ -223,6 +224,8 @@ _ = code == "ABC" //govo:ignore GOV003 // Temporary migration exception
 | On its own line before `if`, `for`, `switch`, or `select` | The header only, such as the condition and initializer, not the block |
 | On its own line before `case` or `default` | The clause's expressions or communication only, not the statements after the colon |
 
+Write one `//govo:ignore` per target. A second one for the same target, a rule ID listed twice, or an `//govo:ignore` without rule IDs beside one that lists them is reported as `GOVD004`; the listed rule IDs are kept. This report cannot be suppressed.
+
 A comment on its own line never reaches into the body of a function literal, as in `defer func() { ... }()`, and there is no block-wide suppression. A reason is optional unless [`ignore.missing-reason`](#configuration) is `error`.
 
 <details>
@@ -235,7 +238,7 @@ A comment on its own line never reaches into the body of a function literal, as 
 
 </details>
 
-### Invalid and unused directives
+### Invalid, unused, and redundant directives
 
 An invalid directive is ignored, but other valid directives at the same location still apply.
 
@@ -253,6 +256,11 @@ An invalid directive is ignored, but other valid directives at the same location
 | `//govo:converter Code` on a function that does not take `Code` | `GOVD001: converter: Code is not accepted by this API` |
 | `//govo:scalar Code` where `Code` is not numeric | `GOVD001: scalar: Code does not have a numeric underlying type` |
 | `//govo:scalar Amount` on a function that is not a `factory` or `op` of `Amount` | `GOVD001: scalar: this API is not a factory or op of Amount` |
+| `//govo:factory Code` twice on one function | `GOVD004: factory: Code is named more than once for this function` |
+| `//govo:factory Code` with `//govo:op Code` on one function | `GOVD004: factory: Code is already permitted by op Code` |
+| `//govo:ignore GOV001` twice before one statement | `GOVD004: redundant ignore rule GOV001; another ignore directive already suppresses it here` |
+| `//govo:ignore GOV001,GOV001` | `GOVD004: redundant ignore rule GOV001; it is listed more than once` |
+| `//govo:ignore` and `//govo:ignore GOV001` before one statement | `GOVD004: redundant ignore directive; another ignore directive lists the rules to suppress here` |
 | `//govo:ignore GOV009` | `GOVD001: unknown ignore rule "GOV009"` |
 | `//govo:ignore GOVD002` | `GOVD001: ignore rule GOVD002 cannot be suppressed` |
 | `//govo:ignore` with nothing to attach to | `GOVD001: ignore is not followed by a statement or declaration` |
@@ -276,6 +284,7 @@ Each diagnostic message starts with its rule ID, as in `GOV001: direct construct
 | `GOVD001` | Unknown, invalid, or unattached directives |
 | `GOVD002` | `ignore` directives or listed rules that suppress nothing |
 | `GOVD003` | `ignore` directives without a reason, when [`ignore.missing-reason`](#configuration) is `error` |
+| `GOVD004` | `factory`, `converter`, `op`, or `scalar` directives that repeat a permission the function already has, and `ignore` directives that repeat another for the same target |
 
 ## Scope and limitations
 

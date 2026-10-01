@@ -18,6 +18,8 @@ type ignoreDirective struct {
 	target   ast.Node
 	rules    map[string]bool
 	used     map[string]bool
+	// repeated holds the rule IDs listed more than once, in order.
+	repeated []string
 	all      bool
 	reason   string
 	file     *ast.File
@@ -54,6 +56,10 @@ func (s *state) parseIgnore(file *ast.File, comment *ast.Comment, ids, reason st
 				// Unused ignore directives are found after suppression.
 				s.issue(comment.Pos(), ruleInvalidDirective, fmt.Sprintf("ignore rule %s cannot be suppressed", id), file)
 			case slices.Contains(knownRules, id):
+				if ignore.rules[id] && !slices.Contains(ignore.repeated, id) {
+					ignore.repeated = append(ignore.repeated, id)
+				}
+
 				ignore.rules[id] = true
 			default:
 				s.issue(comment.Pos(), ruleInvalidDirective, fmt.Sprintf("unknown ignore rule %q", id), file)
@@ -182,21 +188,90 @@ func (s *state) applyIgnores(problem issue) bool {
 //
 //declscope:package // analyzer.go runs it after reporting the issues
 func (s *state) reportUnusedIgnores() {
-	for _, ignore := range s.ignores {
+	for i, ignore := range s.ignores {
 		if s.skipFile(ignore.file) {
 			continue
 		}
 
-		if ignore.all && len(ignore.used) == 0 {
+		// A redundant directive or rule is reported as redundant, not as
+		// unused, since removing it is the fix either way.
+		redundantAll, redundantRules := s.redundantIgnore(i)
+
+		if ignore.all && len(ignore.used) == 0 && redundantAll == "" {
 			s.report(ignore.pos, ruleUnusedIgnore, "unused ignore directive")
 		}
 
 		for _, rule := range slices.Sorted(maps.Keys(ignore.rules)) {
-			if !ignore.used[rule] {
+			if !ignore.used[rule] && redundantRules[rule] == "" {
 				s.report(ignore.pos, ruleUnusedIgnore, "unused ignore rule "+rule)
 			}
 		}
 	}
+}
+
+// reportRedundantIgnores reports the ignore directives, and the rule IDs
+// they list, that another ignore directive of the same target already
+// suppresses. Each ignore directive would suppress this diagnostic of the
+// others, so it is reported directly rather than as an issue.
+//
+//declscope:package // analyzer.go runs it before reporting the issues
+func (s *state) reportRedundantIgnores() {
+	for i, ignore := range s.ignores {
+		if s.skipFile(ignore.file) {
+			continue
+		}
+
+		redundantAll, redundantRules := s.redundantIgnore(i)
+		if redundantAll != "" {
+			s.report(ignore.pos, ruleRedundantDirective, redundantAll)
+		}
+
+		for _, rule := range slices.Sorted(maps.Keys(redundantRules)) {
+			s.report(ignore.pos, ruleRedundantDirective, redundantRules[rule])
+		}
+	}
+}
+
+// redundantIgnore returns why the i-th ignore directive is redundant as a
+// whole, or "" if it is not, and why each of its redundant rule IDs is.
+// Listed rule IDs take precedence over targeting all rules, so a directive
+// that targets all rules is redundant beside a directive for the same
+// target that lists rule IDs, wherever it appears, and after another
+// directive for the same target that targets all rules. A listed rule ID
+// is redundant after another directive for the same target that lists it,
+// and when it is listed more than once.
+func (s *state) redundantIgnore(i int) (string, map[string]string) {
+	ignore := s.ignores[i]
+	rules := make(map[string]string)
+
+	for _, rule := range ignore.repeated {
+		rules[rule] = fmt.Sprintf("redundant ignore rule %s; it is listed more than once", rule)
+	}
+
+	all := ""
+
+	for j, other := range s.ignores {
+		if j == i || ignore.trailing || other.trailing || other.target != ignore.target {
+			continue
+		}
+
+		if ignore.all {
+			switch {
+			case !other.all:
+				all = "redundant ignore directive; another ignore directive lists the rules to suppress here"
+			case j < i && all == "":
+				all = "redundant ignore directive; another ignore directive already suppresses all rules here"
+			}
+		}
+
+		for rule := range ignore.rules {
+			if j < i && other.rules[rule] && rules[rule] == "" {
+				rules[rule] = fmt.Sprintf("redundant ignore rule %s; another ignore directive already suppresses it here", rule)
+			}
+		}
+	}
+
+	return all, rules
 }
 
 func (s *state) ignoreApplies(ignore *ignoreDirective, pos token.Pos) bool {
