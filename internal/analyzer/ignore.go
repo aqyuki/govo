@@ -12,6 +12,7 @@ import (
 // ignoreDirective is a //govo:ignore directive and the rules it suppressed.
 type ignoreDirective struct {
 	pos      token.Pos
+	end      token.Pos
 	line     int
 	trailing bool
 	target   ast.Node
@@ -34,6 +35,7 @@ type ignoreList []*ignoreDirective
 func (s *state) parseIgnore(file *ast.File, comment *ast.Comment, ids, reason string) {
 	ignore := &ignoreDirective{
 		pos:      comment.Pos(),
+		end:      comment.End(),
 		line:     s.pass.Fset.Position(comment.Pos()).Line,
 		trailing: s.trailingIgnore(file, comment),
 		file:     file,
@@ -203,8 +205,14 @@ func (s *state) ignoreApplies(ignore *ignoreDirective, pos token.Pos) bool {
 	}
 
 	target := ignore.target
-	if target == nil || pos < target.Pos() || pos > target.End() {
+	if target == nil || pos < ignore.end || pos > target.End() {
 		return false
+	}
+
+	// Comments between the directive and its target, such as the other
+	// directives in a doc comment, are covered, too.
+	if pos < target.Pos() {
+		return true
 	}
 
 	// A label does not change which statement the directive covers.

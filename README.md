@@ -219,7 +219,7 @@ _ = code == "ABC" //govo:ignore GOV003 // Temporary migration exception
 | Placement | Covers |
 | --- | --- |
 | At the end of a line | Every diagnostic caused on that physical line |
-| On its own line | The following statement or declaration, even when it spans several lines |
+| On its own line | The following statement or declaration, even when it spans several lines, and the directives between them, such as the rest of a doc comment |
 | On its own line before `if`, `for`, `switch`, or `select` | The header only, such as the condition and initializer, not the block |
 | On its own line before `case` or `default` | The clause's expressions or communication only, not the statements after the colon |
 

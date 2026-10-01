@@ -85,3 +85,27 @@ func unmarked(s string, e Email) {
 
 /* want "GOVD001: factory requires a function or method" */ //govo:factory Email
 var _ = 0
+
+// An ignore before other directives in a doc comment covers their
+// diagnostics.
+//
+//govo:ignore GOVD001 // the marker names a type from another file
+//govo:converter Missing
+func ignoredMarker(e Email) string { return "" }
+
+//govo:ignore GOVD001 // kept for an older signature
+//govo:factory Email
+func ignoredShape(s string) string {
+	_ = Email(s) // want "GOV001: direct construction of protected type Email"
+	return s
+}
+
+//govo:ignore GOVD001 // the directive is checked separately
+//govo:protect Extra
+type ignoredProtect string
+
+// An ignore after a directive does not cover it.
+//
+/* want "GOVD001: converter: Missing is not a protected type declared in this file" */ //govo:converter Missing
+/* want "GOVD002: unused ignore rule GOVD001" */ //govo:ignore GOVD001 // too late
+func lateIgnore(e Email) string { return "" }
