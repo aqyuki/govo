@@ -24,7 +24,7 @@ func (s *state) checkExplicitConversion(c *ast.CallExpr, dest types.Type) {
 	}
 
 	if pd != nil && !s.mayConstruct(pd) {
-		s.constructionIssue(c.Fun.Pos(), "direct", dest)
+		s.constructionIssue(ast.Unparen(c.Fun).Pos(), "direct", dest)
 		return
 	}
 
@@ -35,7 +35,7 @@ func (s *state) checkExplicitConversion(c *ast.CallExpr, dest types.Type) {
 	}
 
 	if _, ok := dest.Underlying().(*types.Interface); !ok {
-		s.extractionIssue(c.Fun.Pos(), "direct", source)
+		s.extractionIssue(ast.Unparen(c.Fun).Pos(), "direct", source)
 	}
 }
 

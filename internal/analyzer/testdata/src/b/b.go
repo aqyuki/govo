@@ -193,3 +193,13 @@ func noDuplicates(u uint, x, y int, n a.Number) {
 	_ = n == 1+2 // want "GOV003: untyped constant"
 	_, _, _ = constant, shifted, logical
 }
+
+func parenConversion(s string, c a.Code) {
+	_ = (a.Code)(s) // want "GOV001"
+	_ = (string)(c) // want "GOV002"
+
+	_ = (      // the type name is on the next line
+	a.Code)(s) //govo:ignore GOV001 // reported at the type name, not the parenthesis
+	_ = (      // the type name is on the next line
+	string)(c) //govo:ignore GOV002 // reported at the type name, not the parenthesis
+}
