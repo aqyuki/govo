@@ -261,7 +261,7 @@ func (s *state) walkComposite(c *ast.CompositeLit) {
 			pos = c.Type.Pos()
 		}
 
-		s.constructionIssue(pos, "direct", p)
+		s.constructionIssue(pos, "direct", t)
 	}
 
 	switch u := t.Underlying().(type) {

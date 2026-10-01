@@ -48,7 +48,7 @@ func (s *state) checkOperationOperand(expr ast.Expr, target types.Type, scaling 
 	}
 
 	if !s.mayScale(p) {
-		s.issue(expr.Pos(), ruleOperation, fmt.Sprintf("untyped constant scales protected type %s; use a //govo:%s function", p.name.Name(), directiveScalar), s.current)
+		s.issue(expr.Pos(), ruleOperation, fmt.Sprintf("untyped constant scales protected type %s; use a //govo:%s function", typeString(target), directiveScalar), s.current)
 	}
 }
 
@@ -56,12 +56,12 @@ func (s *state) checkOperationOperand(expr ast.Expr, target types.Type, scaling 
 //
 //declscope:package // walk.go checks every x++ and x-- with it
 func (s *state) checkIncDecOperation(stmt *ast.IncDecStmt) {
-	p := s.protected(s.pass.TypesInfo.TypeOf(stmt.X))
-	if p == nil {
+	t := s.pass.TypesInfo.TypeOf(stmt.X)
+	if s.protected(t) == nil {
 		return
 	}
 
-	s.issue(stmt.TokPos, ruleOperation, fmt.Sprintf("%s applies an untyped constant to protected type %s", stmt.Tok, p.name.Name()), s.current)
+	s.issue(stmt.TokPos, ruleOperation, fmt.Sprintf("%s applies an untyped constant to protected type %s", stmt.Tok, typeString(t)), s.current)
 }
 
 // checkSwitchOperation checks the case values of a switch on a protected
