@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -58,9 +59,33 @@ func defaultConfig() Config {
 	}
 }
 
+// configCacheKey identifies a configuration source. explicit is part of the
+// key because a missing file is an error only when -config names it.
+type configCacheKey struct {
+	path     string
+	explicit bool
+}
+
+// configCacheEntry holds the result of reading one configuration source.
+type configCacheEntry struct {
+	once   sync.Once
+	config Config
+	err    error
+}
+
+// configCache holds each configuration source read in this process, so the
+// standalone command reads it once rather than once per package. Passes may
+// run concurrently, hence the mutex.
+var (
+	configCacheMu sync.Mutex
+	configCache   = make(map[configCacheKey]*configCacheEntry)
+)
+
 // loadConfig reads configuration relative to this process's working
 // directory. go vet starts its vettool once per package in that package's
 // directory, so an explicit relative -config path is resolved there too.
+// The result, or the error, is cached by the resolved absolute path, so
+// resolution is unaffected by the cache.
 //
 //declscope:package // analyzer.go loads it for each package
 func loadConfig() (Config, error) {
@@ -76,6 +101,27 @@ func loadConfig() (Config, error) {
 		return Config{}, fmt.Errorf("resolve config path: %w", err)
 	}
 
+	key := configCacheKey{path: path, explicit: explicit}
+
+	configCacheMu.Lock()
+
+	entry, ok := configCache[key]
+	if !ok {
+		entry = &configCacheEntry{}
+		configCache[key] = entry
+	}
+
+	configCacheMu.Unlock()
+
+	entry.once.Do(func() {
+		entry.config, entry.err = readConfig(path, explicit)
+	})
+
+	return entry.config, entry.err
+}
+
+// readConfig reads and validates the configuration file at the absolute path.
+func readConfig(path string, explicit bool) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) && !explicit {
