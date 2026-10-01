@@ -7,6 +7,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"golang.org/x/tools/go/analysis"
@@ -20,7 +22,18 @@ func TestAnalyzer(t *testing.T) {
 		return run(pass)
 	}
 
-	analysistest.Run(t, analysistest.TestData(), &testAnalyzer, "a", "b")
+	results := analysistest.Run(t, analysistest.TestData(), &testAnalyzer, "a", "b")
+
+	// Tools that consume analyzers identify rules by the category.
+	for _, result := range results {
+		for _, d := range result.Diagnostics {
+			if !slices.Contains(knownRules, d.Category) {
+				t.Errorf("%s: diagnostic %q has category %q, want a rule ID", result.Pass.Fset.Position(d.Pos), d.Message, d.Category)
+			} else if !strings.HasPrefix(d.Message, d.Category+": ") {
+				t.Errorf("%s: diagnostic %q does not start with its category %q", result.Pass.Fset.Position(d.Pos), d.Message, d.Category)
+			}
+		}
+	}
 }
 
 func TestAnalyzerMissingReason(t *testing.T) {

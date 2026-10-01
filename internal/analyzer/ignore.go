@@ -188,12 +188,12 @@ func (s *state) reportUnusedIgnores() {
 		}
 
 		if ignore.all && len(ignore.used) == 0 {
-			s.pass.Reportf(ignore.pos, "%s: unused ignore directive", ruleUnusedIgnore)
+			s.report(ignore.pos, ruleUnusedIgnore, "unused ignore directive")
 		}
 
 		for _, rule := range slices.Sorted(maps.Keys(ignore.rules)) {
 			if !ignore.used[rule] {
-				s.pass.Reportf(ignore.pos, "%s: unused ignore rule %s", ruleUnusedIgnore, rule)
+				s.report(ignore.pos, ruleUnusedIgnore, "unused ignore rule "+rule)
 			}
 		}
 	}

@@ -84,7 +84,7 @@ Packages are specified with the usual Go package patterns, such as `./...`, `./i
 | `-config` | *(`.govo.yaml` in the current directory)* | Path to a YAML config file. Skips the [`.govo.yaml` lookup](#configuration). A missing file is an error |
 | `-tags` | None | Build tags used to select files when loading packages. Commas or spaces separate tags |
 | `-test` | `true` | Load test packages as well. To load them but skip reporting in `_test.go` files, set [`tests: false`](#configuration) instead |
-| `-json` | `false` | Print diagnostics as JSON |
+| `-json` | `false` | Print diagnostics as JSON, with the [rule ID](#diagnostics) as each diagnostic's `category` |
 | `-c` | `-1` | Print `N` lines of source context around each diagnostic |
 | `-V=full` | | Print the version and exit |
 
@@ -265,6 +265,8 @@ An invalid directive is ignored, but other valid directives at the same location
 ## Diagnostics
 
 Rule IDs are grouped by category, and each category is numbered independently. `GOV` rules report operations on protected types, and `GOVD` rules report problems with the directives themselves. Both kinds can be listed in [`//govo:ignore`](#ignoring-a-diagnostic), except `GOVD002`.
+
+Each diagnostic message starts with its rule ID, as in `GOV001: direct construction of protected type Code; use a //govo:factory function`. The rule ID is also set as the diagnostic's category, so `-json` output includes it as `"category"` and tools that run analyzers can identify and filter diagnostics by rule without parsing the message.
 
 | Rule | Reports |
 | ---- | ------- |
