@@ -159,10 +159,22 @@ func (s *state) reportIssues() {
 			continue
 		}
 
-		s.pass.Reportf(problem.pos, "%s: %s", problem.rule, problem.message)
+		s.report(problem.pos, problem.rule, problem.message)
 	}
 
 	s.reportUnusedIgnores()
+}
+
+// report reports a diagnostic of rule at pos. The rule ID is the diagnostic's
+// category and also prefixes its message for plain-text output.
+//
+//declscope:package // ignore.go reports unused ignore directives through it
+func (s *state) report(pos token.Pos, rule, message string) {
+	s.pass.Report(analysis.Diagnostic{
+		Pos:      pos,
+		Category: rule,
+		Message:  rule + ": " + message,
+	})
 }
 
 func excludedPackage(pass *analysis.Pass) bool {

@@ -101,6 +101,8 @@ In the initial version, diagnostics for value operations are grouped by meaning,
 
 Rule IDs consist of a category prefix and a three-digit number, and each category is numbered independently, so adding a rule to one category does not shift or interleave with the other. `GOV` identifies rules for operations on protected types, and `GOVD` identifies rules for directives. A number is never reused for a different rule within its category.
 
+Each diagnostic is reported with its rule ID as the `Category` of the `analysis.Diagnostic`, and its message starts with the rule ID followed by `: `, as in `GOV001: direct construction of protected type Code; use a //govo:factory function`. The category appears as `"category"` in `-json` output and lets drivers that run the analyzer identify a rule without parsing the message.
+
 | Rule ID | Rule | Scope |
 | --- | --- | --- |
 | `GOV001` | Invalid construction | Explicit conversions to a protected type, pointer conversions sharing the storage of a protected type outside a `factory` of that type, non-empty composite literals of a protected type, and implicit conversions from unnamed array, slice, or map values outside a `factory` of the type, declarations of protected typed constants in other files, and implicit construction from untyped constants at ordinary use sites |

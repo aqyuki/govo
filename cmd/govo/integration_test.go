@@ -1,12 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -80,6 +82,54 @@ func TestIntegration(t *testing.T) {
 				t.Fatalf("%q exited with %d and reported %q; want %d and %q\noutput:\n%s", tc.command, exitCode, got, tc.exitCode, tc.want, out)
 			}
 		})
+	}
+}
+
+// TestIntegrationJSON checks that -json output carries the rule ID as each
+// diagnostic's category.
+func TestIntegrationJSON(t *testing.T) {
+	_, bin := buildGovo(t)
+
+	modDir, err := filepath.Abs(filepath.Join("testdata", "mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	env := append(os.Environ(), "GOWORK=off", "GOFLAGS=")
+
+	cmd := exec.Command(bin, "-json", "-test=false", "./use")
+	cmd.Dir = modDir
+	cmd.Env = env
+
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("run %q: %v", cmd.Args, err)
+	}
+
+	var tree map[string]map[string][]struct {
+		Category string `json:"category"`
+		Message  string `json:"message"`
+	}
+	if err := json.Unmarshal(out, &tree); err != nil {
+		t.Fatalf("decode output: %v\noutput:\n%s", err, out)
+	}
+
+	var got []string
+
+	for _, analyzers := range tree {
+		for _, d := range analyzers["govo"] {
+			if !strings.HasPrefix(d.Message, d.Category+": ") {
+				t.Errorf("diagnostic %q has category %q", d.Message, d.Category)
+			}
+
+			got = append(got, d.Category)
+		}
+	}
+
+	slices.Sort(got)
+
+	if want := []string{"GOV001", "GOV003"}; !slices.Equal(got, want) {
+		t.Fatalf("got categories %q, want %q\noutput:\n%s", got, want, out)
 	}
 }
 
