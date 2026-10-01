@@ -15,6 +15,8 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/analysis/passes/inspect"
+	"golang.org/x/tools/go/ast/inspector"
 )
 
 // Analyzer checks conversions and untyped constants involving //govo:protect types.
@@ -49,6 +51,7 @@ func newAnalyzer() *analysis.Analyzer {
 		Name:      "govo",
 		Doc:       "check protected value object construction and extraction",
 		Run:       run,
+		Requires:  []*analysis.Analyzer{inspect.Analyzer},
 		FactTypes: []analysis.Fact{new(protectedFact)},
 	}
 	registerConfigFlag(&a.Flags)
@@ -59,6 +62,7 @@ func newAnalyzer() *analysis.Analyzer {
 type fileInfo struct {
 	name      string
 	generated bool
+	cursor    inspector.Cursor
 	src       []byte
 	srcErr    error
 	srcLoaded bool
@@ -128,10 +132,14 @@ func run(pass *analysis.Pass) (any, error) {
 		grants:   make(map[*ast.FuncDecl]*grant),
 	}
 
-	for _, f := range pass.Files {
+	// The children of the root are the files, in the order of pass.Files.
+	inspected := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
+	for cursor := range inspected.Root().Children() {
+		f := cursor.Node().(*ast.File)
 		s.files[f] = &fileInfo{
 			name:      pass.Fset.PositionFor(f.Pos(), false).Filename,
 			generated: ast.IsGenerated(f),
+			cursor:    cursor,
 		}
 		s.collectProtect(f)
 	}
@@ -144,7 +152,7 @@ func run(pass *analysis.Pass) (any, error) {
 			continue
 		}
 
-		s.walkFile(f)
+		s.walkFile(s.files[f].cursor)
 	}
 
 	s.reportIssues()
@@ -261,6 +269,13 @@ func (s *state) mayExtract(p *protectedType) bool {
 //declscope:package // operation.go consults it for scaled operands
 func (s *state) mayScale(p *protectedType) bool {
 	return p.file == s.current && s.grant != nil && s.grant.scale[p]
+}
+
+// fileCursor returns the cursor of f in the inspector of the pass.
+//
+//declscope:package // ignore.go finds the target of an ignore directive in it
+func (s *state) fileCursor(f *ast.File) inspector.Cursor {
+	return s.files[f].cursor
 }
 
 // source returns the contents of f, reading the file at most once.
