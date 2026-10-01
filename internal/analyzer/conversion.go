@@ -24,7 +24,7 @@ func (s *state) checkExplicitConversion(c *ast.CallExpr, dest types.Type) {
 	}
 
 	if pd != nil && !s.mayConstruct(pd) {
-		s.constructionIssue(c.Fun.Pos(), "direct", pd)
+		s.constructionIssue(c.Fun.Pos(), "direct", dest)
 		return
 	}
 
@@ -35,7 +35,7 @@ func (s *state) checkExplicitConversion(c *ast.CallExpr, dest types.Type) {
 	}
 
 	if _, ok := dest.Underlying().(*types.Interface); !ok {
-		s.extractionIssue(c.Fun.Pos(), "direct", ps)
+		s.extractionIssue(c.Fun.Pos(), "direct", source)
 	}
 }
 
@@ -74,17 +74,17 @@ func (s *state) checkAliasingConversion(pos token.Pos, from, to types.Type) {
 		return
 	}
 
-	involved := []*protectedType{s.protected(to), s.protected(from)}
-	for _, p := range involved {
-		if p != nil && !s.mayConstruct(p) {
-			s.constructionIssue(pos, "direct", p)
+	involved := []types.Type{to, from}
+	for _, t := range involved {
+		if p := s.protected(t); p != nil && !s.mayConstruct(p) {
+			s.constructionIssue(pos, "direct", t)
 			return
 		}
 	}
 
-	for _, p := range involved {
-		if p != nil && !s.mayExtract(p) {
-			s.extractionIssue(pos, "direct", p)
+	for _, t := range involved {
+		if p := s.protected(t); p != nil && !s.mayExtract(p) {
+			s.extractionIssue(pos, "direct", t)
 			return
 		}
 	}
@@ -139,14 +139,14 @@ func (s *state) checkAssignedConversion(pos token.Pos, source, target types.Type
 
 	if p := s.protected(target); p != nil {
 		if !s.mayConstruct(p) {
-			s.constructionIssue(pos, "implicit", p)
+			s.constructionIssue(pos, "implicit", target)
 		}
 
 		return
 	}
 
 	if p := s.protected(source); p != nil && !s.mayExtract(p) {
-		s.extractionIssue(pos, "implicit", p)
+		s.extractionIssue(pos, "implicit", source)
 	}
 }
 
@@ -165,5 +165,5 @@ func (s *state) checkUntypedConversion(expr ast.Expr, target types.Type, rule st
 		kind = "constant"
 	}
 
-	s.issue(expr.Pos(), rule, fmt.Sprintf("untyped %s used as protected type %s", kind, p.name.Name()), s.current)
+	s.issue(expr.Pos(), rule, fmt.Sprintf("untyped %s used as protected type %s", kind, typeString(target)), s.current)
 }

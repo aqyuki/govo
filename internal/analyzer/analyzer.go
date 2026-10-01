@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"go/types"
 	"os"
 	"path/filepath"
 	"strings"
@@ -274,18 +275,27 @@ func (s *state) issue(pos token.Pos, rule, msg string, f *ast.File) {
 	s.issues = append(s.issues, issue{pos: pos, rule: rule, message: msg, file: f})
 }
 
-// constructionIssue reports a construction of p outside its factories and
-// points to the marker that permits it.
+// constructionIssue reports a construction of the protected type t outside
+// its factories and points to the marker that permits it.
 //
 //declscope:package // conversions and composite literals construct values
-func (s *state) constructionIssue(pos token.Pos, kind string, p *protectedType) {
-	s.issue(pos, ruleConstruction, fmt.Sprintf("%s construction of protected type %s; use a //govo:%s function", kind, p.name.Name(), directiveFactory), s.current)
+func (s *state) constructionIssue(pos token.Pos, kind string, t types.Type) {
+	s.issue(pos, ruleConstruction, fmt.Sprintf("%s construction of protected type %s; use a //govo:%s function", kind, typeString(t), directiveFactory), s.current)
 }
 
-// extractionIssue reports an extraction from p outside its converters and
-// points to the marker that permits it.
+// extractionIssue reports an extraction from the protected type t outside
+// its converters and points to the marker that permits it.
 //
 //declscope:package // conversion.go reports extractions
-func (s *state) extractionIssue(pos token.Pos, kind string, p *protectedType) {
-	s.issue(pos, ruleExtraction, fmt.Sprintf("%s extraction from protected type %s; use a //govo:%s function", kind, p.name.Name(), directiveConverter), s.current)
+func (s *state) extractionIssue(pos token.Pos, kind string, t types.Type) {
+	s.issue(pos, ruleExtraction, fmt.Sprintf("%s extraction from protected type %s; use a //govo:%s function", kind, typeString(t), directiveConverter), s.current)
+}
+
+// typeString returns the protected type t as diagnostics name it: the type
+// that an alias denotes, with the type arguments of an instance and without
+// package qualifiers, as in Code or List[int].
+//
+//declscope:package // the checks name protected types in their diagnostics
+func typeString(t types.Type) string {
+	return types.TypeString(types.Unalias(t), func(*types.Package) string { return "" })
 }

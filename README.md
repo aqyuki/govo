@@ -166,8 +166,8 @@ Markers can be attached to exported and unexported functions and methods, so int
 
 | Marker | A named type passes when |
 | --- | --- |
-| `factory` | One of the results has exactly that type. `(Code, error)` passes; `*Code` and `[]Code` do not |
-| `converter` | The receiver or an argument has that type or a pointer to it. The results are unrestricted |
+| `factory` | One of the results has exactly that type, or for a generic type any instance of it, such as `List[T]` or `List[int]`. `(Code, error)` passes; `*Code` and `[]Code` do not |
+| `converter` | The receiver or an argument has that type or a pointer to it, or for a generic type an instance of it. The results are unrestricted |
 | `op` | Both of the above: it takes that type or a pointer to it, and one of the results has exactly that type |
 
 - The type names may be omitted when the file declares a single protected type. With more than one, name them.
@@ -277,7 +277,7 @@ Rule IDs are grouped by category, and each category is numbered independently. `
 
 ## Scope and limitations
 
-Protected types must be defined types with a boolean, numeric, string, array, slice, or map underlying type. Protected types declared in other packages within the same module, including unexported ones whose values are exposed through exported APIs, are also checked.
+Protected types must be defined types with a boolean, numeric, string, array, slice, or map underlying type. Generic types such as `type List[T any] []T` are allowed: every instance is protected, markers name the generic type (`//govo:factory List`), and a conversion between distinct instances such as `ID[User](orderID)` crosses the type boundary. Protected types declared in other packages within the same module, including unexported ones whose values are exposed through exported APIs, are also checked.
 
 - Zero-value construction (`var code Code` or `new(Code)`) is allowed, as are `make`, `nil`, and empty composite literals such as `Codes{}`.
 - Element operations on a protected array, slice, or map, such as indexing, `range`, slicing, `len`, `append`, `copy`, and `delete`, are not reported. Use a struct with unexported fields when elements must not be read or modified.

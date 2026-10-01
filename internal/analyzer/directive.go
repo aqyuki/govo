@@ -150,14 +150,12 @@ func (s *state) validateMarkerDirective(f *ast.File, comment *ast.Comment, comma
 	}
 
 	for _, p := range targets {
-		t := p.name.Type()
-
-		if command != directiveFactory && !directiveFuncAccepts(sig, t) {
+		if command != directiveFactory && !directiveFuncAccepts(sig, p) {
 			s.issue(comment.Pos(), ruleInvalidDirective, fmt.Sprintf("%s: %s is not accepted by this API", command, p.name.Name()), f)
 			continue
 		}
 
-		if command != directiveConverter && !directiveFuncReturns(sig, t) {
+		if command != directiveConverter && !directiveFuncReturns(sig, p) {
 			s.issue(comment.Pos(), ruleInvalidDirective, fmt.Sprintf("%s: %s is not returned by this API", command, p.name.Name()), f)
 			continue
 		}
@@ -204,10 +202,10 @@ func (s *state) validateScalarDirective(f *ast.File, comment *ast.Comment, args 
 }
 
 // directiveFuncReturns reports whether the function a directive is attached
-// to, with signature sig, returns t.
-func directiveFuncReturns(sig *types.Signature, t types.Type) bool {
+// to, with signature sig, returns p or an instance of it.
+func directiveFuncReturns(sig *types.Signature, p *protectedType) bool {
 	for v := range sig.Results().Variables() {
-		if types.Identical(v.Type(), t) {
+		if directiveNamesType(v.Type(), p) {
 			return true
 		}
 	}
@@ -216,14 +214,15 @@ func directiveFuncReturns(sig *types.Signature, t types.Type) bool {
 }
 
 // directiveFuncAccepts reports whether the function a directive is attached
-// to, with signature sig, takes t or *t as its receiver or a parameter.
-func directiveFuncAccepts(sig *types.Signature, t types.Type) bool {
-	if sig.Recv() != nil && directiveFuncInput(sig.Recv().Type(), t) {
+// to, with signature sig, takes p or *p, or an instance of it, as its
+// receiver or a parameter.
+func directiveFuncAccepts(sig *types.Signature, p *protectedType) bool {
+	if sig.Recv() != nil && directiveFuncInput(sig.Recv().Type(), p) {
 		return true
 	}
 
 	for v := range sig.Params().Variables() {
-		if directiveFuncInput(v.Type(), t) {
+		if directiveFuncInput(v.Type(), p) {
 			return true
 		}
 	}
@@ -232,13 +231,22 @@ func directiveFuncAccepts(sig *types.Signature, t types.Type) bool {
 }
 
 // directiveFuncInput reports whether a receiver or parameter of type input
-// takes a value of protected, directly or through a pointer.
-func directiveFuncInput(input, protected types.Type) bool {
-	if types.Identical(input, protected) {
+// takes a value of p, directly or through a pointer.
+func directiveFuncInput(input types.Type, p *protectedType) bool {
+	if directiveNamesType(input, p) {
 		return true
 	}
 
-	ptr, ok := input.(*types.Pointer)
+	ptr, ok := types.Unalias(input).(*types.Pointer)
 
-	return ok && types.Identical(ptr.Elem(), protected)
+	return ok && directiveNamesType(ptr.Elem(), p)
+}
+
+// directiveNamesType reports whether t is p or an instance of it. Any
+// instance counts, whether its type arguments are type parameters of the
+// function, as in List[T], or concrete types, as in List[int].
+func directiveNamesType(t types.Type, p *protectedType) bool {
+	named, ok := types.Unalias(t).(*types.Named)
+
+	return ok && named.Origin().Obj() == p.name
 }
