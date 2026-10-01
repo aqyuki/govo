@@ -111,6 +111,7 @@ Each diagnostic is reported with its rule ID as the `Category` of the `analysis.
 | `GOVD001` | Invalid directives | Unknown directives, directives with invalid arguments, directives that cannot be attached to a target, `protect` on a type that cannot be protected, markers that fail their shape check, `scalar` on a non-numeric type or a function that is not a `factory` or `op` of it, and unknown or unsuppressible rule IDs in `ignore` |
 | `GOVD002` | Unused `ignore` directives | `ignore` directives that suppress no diagnostics, and rule IDs listed in an `ignore` directive that suppress no diagnostics |
 | `GOVD003` | Missing `ignore` reasons | `ignore` directives without a reason when reason checking is enabled |
+| `GOVD004` | Redundant directives | `factory`, `converter`, `op`, or `scalar` directives that name a type for a function whose other directives already grant the same permission for it |
 
 A single conversion expression does not receive overlapping diagnostics. For example, if both types in `OtherCode(code)` are protected, construction of the destination and extraction from the source are evaluated against the `factory` and `converter` markers of the enclosing function. If both violate the rules, only `GOV001` is reported. If only construction violates the rules, `GOV001` is reported; if only extraction violates them, `GOV002` is reported.
 
@@ -149,6 +150,8 @@ Each type named in a `converter` directive is also checked separately. The direc
 Each type named in an `op` directive must pass both checks: the receiver or an argument has that protected type or a pointer to it, and one of the return values has exactly that type. `GOVD001` is reported for a type that fails either check, and the function gains neither permission for it. A function that only constructs or only extracts should be a `factory` or a `converter`. These checks verify the shape of the API, not the correctness of validation or conversion logic.
 
 Each type named in a `scalar` directive must have a numeric underlying type, and the function must be a `factory` or `op` of that type with a valid marker. `GOVD001` is reported for a type that fails either condition, and the function does not gain permission to scale it.
+
+A function's directives should state each permission once. When a valid `factory`, `converter`, `op`, or `scalar` names a type that the function's directives already name with a valid directive of the same command, including a repetition within one directive such as `//govo:factory Code Code` and a type that an omitted name stands for, `GOVD004` is reported at each later directive for that type. A valid `factory` or `converter` of a type that a valid `op` of the same function names is reported as `GOVD004`, wherever it appears, because the `op` already grants its permission. A `factory` and a `converter` of the same type are not redundant, since each grants a different permission. Only types that pass their checks count, so a marker reported as `GOVD001` for a type neither is reported as redundant nor makes another one redundant. A redundant directive still grants its permission.
 
 In every directive, text from the first `//` after `//govo:` is not parsed as arguments, so `//govo:factory Code // needed for compatibility` names only `Code`. Only `ignore` treats that text as its reason; other directives ignore it.
 

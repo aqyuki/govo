@@ -53,7 +53,10 @@ func parseDirective(text string) (command, args, reason string, ok bool) {
 func (s *state) collectDirectives(f *ast.File) {
 	// A scalar directive depends on the factory permission that the markers
 	// of its function grant, wherever they appear in the doc comment.
-	var scalars []*ast.Comment
+	var (
+		scalars []*ast.Comment
+		markers []directiveMarker
+	)
 
 	for _, group := range f.Comments {
 		for _, comment := range group.List {
@@ -72,7 +75,7 @@ func (s *state) collectDirectives(f *ast.File) {
 					s.issue(comment.Pos(), ruleInvalidDirective, "protect is not attached to a type declaration", f)
 				}
 			case directiveFactory, directiveConverter, directiveOp:
-				s.validateMarkerDirective(f, comment, command, args)
+				markers = append(markers, s.validateMarkerDirective(f, comment, command, args)...)
 			case directiveScalar:
 				scalars = append(scalars, comment)
 			case directiveIgnore:
@@ -85,7 +88,56 @@ func (s *state) collectDirectives(f *ast.File) {
 
 	for _, comment := range scalars {
 		_, args, _, _ := parseDirective(comment.Text)
-		s.validateScalarDirective(f, comment, args)
+		markers = append(markers, s.validateScalarDirective(f, comment, args)...)
+	}
+
+	s.reportRedundantDirectives(f, markers)
+}
+
+// directiveMarker is a protected type that a valid factory, converter, op,
+// or scalar directive names for its function.
+type directiveMarker struct {
+	fn      *ast.FuncDecl
+	comment *ast.Comment
+	command string
+	p       *protectedType
+}
+
+// reportRedundantDirectives reports the types that a directive names for a
+// function whose other directives already grant the same permission: a
+// marker or scalar that repeats the same type, and a factory or converter
+// of a type that an op of the function names. The markers of each command
+// are in source order, so the later of two repetitions is reported.
+func (s *state) reportRedundantDirectives(f *ast.File, markers []directiveMarker) {
+	type named struct {
+		comment *ast.Comment
+		p       *protectedType
+	}
+
+	reported := make(map[named]bool)
+
+	for i, m := range markers {
+		if reported[named{m.comment, m.p}] {
+			continue
+		}
+
+		same := func(command string) func(directiveMarker) bool {
+			return func(o directiveMarker) bool { return o.fn == m.fn && o.p == m.p && o.command == command }
+		}
+
+		var msg string
+
+		switch {
+		case (m.command == directiveFactory || m.command == directiveConverter) && slices.ContainsFunc(markers, same(directiveOp)):
+			msg = fmt.Sprintf("%s: %s is already permitted by op %[2]s", m.command, m.p.name.Name())
+		case slices.ContainsFunc(markers[:i], same(m.command)):
+			msg = fmt.Sprintf("%s: %s is named more than once for this function", m.command, m.p.name.Name())
+		default:
+			continue
+		}
+
+		reported[named{m.comment, m.p}] = true
+		s.issue(m.comment.Pos(), ruleRedundantDirective, msg, f)
 	}
 }
 
@@ -141,17 +193,20 @@ func (s *state) directiveTargets(f *ast.File, comment *ast.Comment, command, arg
 // validateMarkerDirective checks the shape of a function marked as a factory,
 // converter, or op of each named type and grants the permission for each
 // type that passes. An op both constructs and extracts, so it must pass
-// the checks of both a factory and a converter.
-func (s *state) validateMarkerDirective(f *ast.File, comment *ast.Comment, command, args string) {
+// the checks of both a factory and a converter. It returns the types that
+// pass.
+func (s *state) validateMarkerDirective(f *ast.File, comment *ast.Comment, command, args string) []directiveMarker {
 	fn, targets := s.directiveTargets(f, comment, command, args)
 	if fn == nil {
-		return
+		return nil
 	}
 
 	sig, _ := s.pass.TypesInfo.TypeOf(fn.Name).(*types.Signature)
 	if sig == nil {
-		return
+		return nil
 	}
+
+	var markers []directiveMarker
 
 	for _, p := range targets {
 		if command != directiveFactory && !directiveFuncAccepts(sig, p) {
@@ -176,18 +231,24 @@ func (s *state) validateMarkerDirective(f *ast.File, comment *ast.Comment, comma
 
 		g.construct[p] = g.construct[p] || command != directiveConverter
 		g.extract[p] = g.extract[p] || command != directiveFactory
+
+		markers = append(markers, directiveMarker{fn: fn, comment: comment, command: command, p: p})
 	}
+
+	return markers
 }
 
 // validateScalarDirective checks a scalar directive, which permits untyped constants
 // as scalars that multiply or divide the named numeric types. Scaling
 // yields a new value, so the function must be permitted to construct each
-// type, as a factory or op of it.
-func (s *state) validateScalarDirective(f *ast.File, comment *ast.Comment, args string) {
+// type, as a factory or op of it. It returns the types that pass.
+func (s *state) validateScalarDirective(f *ast.File, comment *ast.Comment, args string) []directiveMarker {
 	fn, targets := s.directiveTargets(f, comment, directiveScalar, args)
 	if fn == nil {
-		return
+		return nil
 	}
+
+	var markers []directiveMarker
 
 	for _, p := range targets {
 		if basic, ok := p.name.Type().Underlying().(*types.Basic); !ok || basic.Info()&types.IsNumeric == 0 {
@@ -202,7 +263,10 @@ func (s *state) validateScalarDirective(f *ast.File, comment *ast.Comment, args 
 		}
 
 		g.scale[p] = true
+		markers = append(markers, directiveMarker{fn: fn, comment: comment, command: directiveScalar, p: p})
 	}
+
+	return markers
 }
 
 // directiveFuncReturns reports whether the function a directive is attached

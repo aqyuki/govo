@@ -30,9 +30,10 @@ const (
 	ruleExtraction = "GOV002"
 	ruleOperation  = "GOV003"
 
-	ruleInvalidDirective = "GOVD001"
-	ruleUnusedIgnore     = "GOVD002"
-	ruleMissingReason    = "GOVD003"
+	ruleInvalidDirective   = "GOVD001"
+	ruleUnusedIgnore       = "GOVD002"
+	ruleMissingReason      = "GOVD003"
+	ruleRedundantDirective = "GOVD004"
 )
 
 // knownRules lists the rule IDs that an ignore directive may name.
@@ -40,7 +41,7 @@ const (
 //declscope:package // ignore.go validates ignore directives against it
 var knownRules = []string{
 	ruleConstruction, ruleExtraction, ruleOperation,
-	ruleInvalidDirective, ruleUnusedIgnore, ruleMissingReason,
+	ruleInvalidDirective, ruleUnusedIgnore, ruleMissingReason, ruleRedundantDirective,
 }
 
 func newAnalyzer() *analysis.Analyzer {

@@ -173,6 +173,7 @@ Markers can be attached to exported and unexported functions and methods, so int
 - The type names may be omitted when the file declares a single protected type. With more than one, name them.
 - List several types on one line, separated by spaces, or repeat the directive. Both forms name the same set.
 - A marker on a declaration in another file than the type is reported as `GOVD001` and ignored.
+- Name each type once per function and command. A repeated type, or a `factory` or `converter` of a type that an `op` of the same function already names, is reported as `GOVD004`.
 
 ```go
 //govo:factory Code RegionCode
@@ -235,7 +236,7 @@ A comment on its own line never reaches into the body of a function literal, as 
 
 </details>
 
-### Invalid and unused directives
+### Invalid, unused, and redundant directives
 
 An invalid directive is ignored, but other valid directives at the same location still apply.
 
@@ -253,6 +254,8 @@ An invalid directive is ignored, but other valid directives at the same location
 | `//govo:converter Code` on a function that does not take `Code` | `GOVD001: converter: Code is not accepted by this API` |
 | `//govo:scalar Code` where `Code` is not numeric | `GOVD001: scalar: Code does not have a numeric underlying type` |
 | `//govo:scalar Amount` on a function that is not a `factory` or `op` of `Amount` | `GOVD001: scalar: this API is not a factory or op of Amount` |
+| `//govo:factory Code` twice on one function | `GOVD004: factory: Code is named more than once for this function` |
+| `//govo:factory Code` with `//govo:op Code` on one function | `GOVD004: factory: Code is already permitted by op Code` |
 | `//govo:ignore GOV009` | `GOVD001: unknown ignore rule "GOV009"` |
 | `//govo:ignore GOVD002` | `GOVD001: ignore rule GOVD002 cannot be suppressed` |
 | `//govo:ignore` with nothing to attach to | `GOVD001: ignore is not followed by a statement or declaration` |
@@ -276,6 +279,7 @@ Each diagnostic message starts with its rule ID, as in `GOV001: direct construct
 | `GOVD001` | Unknown, invalid, or unattached directives |
 | `GOVD002` | `ignore` directives or listed rules that suppress nothing |
 | `GOVD003` | `ignore` directives without a reason, when [`ignore.missing-reason`](#configuration) is `error` |
+| `GOVD004` | `factory`, `converter`, `op`, or `scalar` directives that repeat a permission the function already has |
 
 ## Scope and limitations
 
