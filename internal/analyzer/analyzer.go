@@ -153,7 +153,7 @@ func run(pass *analysis.Pass) (any, error) {
 }
 
 // reportIssues reports every issue that no ignore directive suppresses, and
-// then the ignore directives that suppressed nothing.
+// then the ignore directives that are redundant or suppressed nothing.
 func (s *state) reportIssues() {
 	for _, problem := range s.issues {
 		if s.skipFile(problem.file) || s.applyIgnores(problem) {
@@ -163,6 +163,7 @@ func (s *state) reportIssues() {
 		s.report(problem.pos, problem.rule, problem.message)
 	}
 
+	s.reportRedundantIgnores()
 	s.reportUnusedIgnores()
 }
 
