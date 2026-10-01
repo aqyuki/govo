@@ -86,6 +86,12 @@ func unmarked(s string, e Email) {
 /* want "GOVD001: factory requires a function or method" */ //govo:factory Email
 var _ = 0
 
+// A directive in a function body is not in the function's doc comment.
+func markerInBody(s string) Email {
+	/* want "GOVD001: factory requires a function or method" */ //govo:factory Email
+	return Email(s) // want "GOV001: direct construction of protected type Email"
+}
+
 // An ignore before other directives in a doc comment covers their
 // diagnostics.
 //

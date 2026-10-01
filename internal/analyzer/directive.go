@@ -53,12 +53,21 @@ func parseDirective(text string) (command, args, reason string, ok bool) {
 func (s *state) collectDirectives(f *ast.File) {
 	// A scalar directive depends on the factory permission that the markers
 	// of its function grant, wherever they appear in the doc comment.
+	type scalar struct {
+		fn      *ast.FuncDecl
+		comment *ast.Comment
+	}
+
 	var (
-		scalars []*ast.Comment
+		scalars []scalar
 		markers []directiveMarker
 	)
 
+	funcs := directiveFuncDocs(f)
+
 	for _, group := range f.Comments {
+		fn := funcs[group]
+
 		for _, comment := range group.List {
 			command, args, reason, ok := parseDirective(comment.Text)
 			if !ok {
@@ -75,9 +84,9 @@ func (s *state) collectDirectives(f *ast.File) {
 					s.issue(comment.Pos(), ruleInvalidDirective, "protect is not attached to a type declaration", f)
 				}
 			case directiveFactory, directiveConverter, directiveOp:
-				markers = append(markers, s.validateMarkerDirective(f, comment, command, args)...)
+				markers = append(markers, s.validateMarkerDirective(f, fn, comment, command, args)...)
 			case directiveScalar:
-				scalars = append(scalars, comment)
+				scalars = append(scalars, scalar{fn: fn, comment: comment})
 			case directiveIgnore:
 				s.parseIgnore(f, comment, args, reason)
 			default:
@@ -86,9 +95,9 @@ func (s *state) collectDirectives(f *ast.File) {
 		}
 	}
 
-	for _, comment := range scalars {
-		_, args, _, _ := parseDirective(comment.Text)
-		markers = append(markers, s.validateScalarDirective(f, comment, args)...)
+	for _, sc := range scalars {
+		_, args, _, _ := parseDirective(sc.comment.Text)
+		markers = append(markers, s.validateScalarDirective(f, sc.fn, sc.comment, args)...)
 	}
 
 	s.reportRedundantDirectives(f, markers)
@@ -141,25 +150,30 @@ func (s *state) reportRedundantDirectives(f *ast.File, markers []directiveMarker
 	}
 }
 
-// directiveTargets returns the function that a function directive is
-// attached to and the protected types that it names. It reports the
-// directive and returns a nil function when either cannot be determined.
-// A name that is not a protected type declared in f is reported and left
-// out of the result.
-func (s *state) directiveTargets(f *ast.File, comment *ast.Comment, command, args string) (*ast.FuncDecl, []*protectedType) {
-	var fn *ast.FuncDecl
+// directiveFuncDocs maps the doc comment of each function declared in f
+// to the function, so that a directive finds the function it is attached
+// to from its comment group.
+func directiveFuncDocs(f *ast.File) map[*ast.CommentGroup]*ast.FuncDecl {
+	funcs := make(map[*ast.CommentGroup]*ast.FuncDecl)
 
 	for _, decl := range f.Decls {
-		candidate, ok := decl.(*ast.FuncDecl)
-		if ok && candidate.Doc != nil && slices.Contains(candidate.Doc.List, comment) {
-			fn = candidate
-			break
+		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Doc != nil {
+			funcs[fn.Doc] = fn
 		}
 	}
 
+	return funcs
+}
+
+// directiveTargets returns the protected types that a function directive
+// names. fn is the function that the directive is attached to, or nil when
+// its comment is not a function's doc comment. It reports the directive and
+// returns false when either cannot be determined. A name that is not a
+// protected type declared in f is reported and left out of the result.
+func (s *state) directiveTargets(f *ast.File, fn *ast.FuncDecl, comment *ast.Comment, command, args string) ([]*protectedType, bool) {
 	if fn == nil {
 		s.issue(comment.Pos(), ruleInvalidDirective, command+" requires a function or method", f)
-		return nil, nil
+		return nil, false
 	}
 
 	protected := s.protectedIn(f)
@@ -172,7 +186,7 @@ func (s *state) directiveTargets(f *ast.File, comment *ast.Comment, command, arg
 		names = []string{protected[0].name.Name()}
 	} else {
 		s.issue(comment.Pos(), ruleInvalidDirective, command+" requires a type name unless this file declares exactly one protected type", f)
-		return nil, nil
+		return nil, false
 	}
 
 	var targets []*protectedType
@@ -187,7 +201,7 @@ func (s *state) directiveTargets(f *ast.File, comment *ast.Comment, command, arg
 		targets = append(targets, protected[i])
 	}
 
-	return fn, targets
+	return targets, true
 }
 
 // validateMarkerDirective checks the shape of a function marked as a factory,
@@ -195,9 +209,9 @@ func (s *state) directiveTargets(f *ast.File, comment *ast.Comment, command, arg
 // type that passes. An op both constructs and extracts, so it must pass
 // the checks of both a factory and a converter. It returns the types that
 // pass.
-func (s *state) validateMarkerDirective(f *ast.File, comment *ast.Comment, command, args string) []directiveMarker {
-	fn, targets := s.directiveTargets(f, comment, command, args)
-	if fn == nil {
+func (s *state) validateMarkerDirective(f *ast.File, fn *ast.FuncDecl, comment *ast.Comment, command, args string) []directiveMarker {
+	targets, ok := s.directiveTargets(f, fn, comment, command, args)
+	if !ok {
 		return nil
 	}
 
@@ -242,9 +256,9 @@ func (s *state) validateMarkerDirective(f *ast.File, comment *ast.Comment, comma
 // as scalars that multiply or divide the named numeric types. Scaling
 // yields a new value, so the function must be permitted to construct each
 // type, as a factory or op of it. It returns the types that pass.
-func (s *state) validateScalarDirective(f *ast.File, comment *ast.Comment, args string) []directiveMarker {
-	fn, targets := s.directiveTargets(f, comment, directiveScalar, args)
-	if fn == nil {
+func (s *state) validateScalarDirective(f *ast.File, fn *ast.FuncDecl, comment *ast.Comment, args string) []directiveMarker {
+	targets, ok := s.directiveTargets(f, fn, comment, directiveScalar, args)
+	if !ok {
 		return nil
 	}
 
