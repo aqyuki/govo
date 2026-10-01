@@ -25,21 +25,25 @@ const (
 	directiveIgnore = "ignore"
 )
 
-// parseDirective splits a //govo: comment into its command and arguments.
+// parseDirective splits a //govo: comment into its command, its arguments,
+// and the reason that follows them in the golangci-lint "// reason" form.
 //
 //declscope:package // protect.go finds protect directives with it
-func parseDirective(text string) (command, args string, ok bool) {
+func parseDirective(text string) (command, args, reason string, ok bool) {
 	body, ok := strings.CutPrefix(text, directivePrefix)
 	if !ok {
-		return "", "", false
+		return "", "", "", false
 	}
+
+	body, reason, _ = strings.Cut(body, "//")
+	reason = strings.TrimSpace(reason)
 
 	body = strings.TrimSpace(body)
 	if i := strings.IndexFunc(body, unicode.IsSpace); i >= 0 {
-		return body[:i], strings.TrimSpace(body[i:]), true
+		return body[:i], strings.TrimSpace(body[i:]), reason, true
 	}
 
-	return body, "", true
+	return body, "", reason, true
 }
 
 // collectDirectives validates the directives of f and records the
@@ -53,7 +57,7 @@ func (s *state) collectDirectives(f *ast.File) {
 
 	for _, group := range f.Comments {
 		for _, comment := range group.List {
-			command, args, ok := parseDirective(comment.Text)
+			command, args, reason, ok := parseDirective(comment.Text)
 			if !ok {
 				continue
 			}
@@ -72,7 +76,7 @@ func (s *state) collectDirectives(f *ast.File) {
 			case directiveScalar:
 				scalars = append(scalars, comment)
 			case directiveIgnore:
-				s.parseIgnore(f, comment, args)
+				s.parseIgnore(f, comment, args, reason)
 			default:
 				s.issue(comment.Pos(), ruleInvalidDirective, fmt.Sprintf("unknown govo directive %q", command), f)
 			}
@@ -80,7 +84,7 @@ func (s *state) collectDirectives(f *ast.File) {
 	}
 
 	for _, comment := range scalars {
-		_, args, _ := parseDirective(comment.Text)
+		_, args, _, _ := parseDirective(comment.Text)
 		s.validateScalarDirective(f, comment, args)
 	}
 }
