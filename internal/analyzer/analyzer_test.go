@@ -29,10 +29,7 @@ func TestAnalyzerMissingReason(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	oldPath := configPath
-	configPath = path
-
-	t.Cleanup(func() { configPath = oldPath })
+	setConfigFlag(t, path)
 
 	testAnalyzer := *Analyzer
 	testAnalyzer.Run = func(pass *analysis.Pass) (any, error) {
@@ -44,9 +41,7 @@ func TestAnalyzerMissingReason(t *testing.T) {
 }
 
 func TestExcludedPackagesDoNotLoadConfig(t *testing.T) {
-	oldPath := configPath
-	configPath = filepath.Join(t.TempDir(), "missing.yaml")
-	t.Cleanup(func() { configPath = oldPath })
+	setConfigFlag(t, filepath.Join(t.TempDir(), "missing.yaml"))
 
 	fset := token.NewFileSet()
 	stdlibFile := fset.AddFile(filepath.Join(t.TempDir(), "fmt", "print.go"), -1, 1)
@@ -112,4 +107,22 @@ func TestVendoredPackage(t *testing.T) {
 			}
 		})
 	}
+}
+
+// setConfigFlag sets the -config flag of Analyzer for the rest of the test.
+func setConfigFlag(t *testing.T, path string) {
+	t.Helper()
+
+	flag := Analyzer.Flags.Lookup("config")
+	old := flag.Value.String()
+
+	if err := flag.Value.Set(path); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() {
+		if err := flag.Value.Set(old); err != nil {
+			t.Error(err)
+		}
+	})
 }

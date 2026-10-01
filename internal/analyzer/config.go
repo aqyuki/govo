@@ -35,8 +35,9 @@ type IgnoreConfig struct {
 
 // Values accepted by ignore.missing-reason.
 const (
-	missingReasonOff   = "off"
-	missingReasonError = "error"
+	configMissingReasonOff = "off"
+	//declscope:package // ignore.go reports ignore directives without a reason
+	configMissingReasonError = "error"
 )
 
 var configPath string
@@ -44,6 +45,8 @@ var configPath string
 // registerConfigFlag adds the shared configuration flag to the analyzer.
 // Keeping the flag on Analyzer.Flags lets both the standalone command and
 // go vet -vettool pass it through the analysis driver.
+//
+//declscope:package // analyzer.go registers it on Analyzer
 func registerConfigFlag(flags *flag.FlagSet) {
 	flags.StringVar(&configPath, "config", "", "path to a govo YAML configuration file")
 }
@@ -51,13 +54,15 @@ func registerConfigFlag(flags *flag.FlagSet) {
 func defaultConfig() Config {
 	return Config{
 		Tests:  true,
-		Ignore: IgnoreConfig{MissingReason: missingReasonOff},
+		Ignore: IgnoreConfig{MissingReason: configMissingReasonOff},
 	}
 }
 
 // loadConfig reads configuration relative to this process's working
 // directory. go vet starts its vettool once per package in that package's
 // directory, so an explicit relative -config path is resolved there too.
+//
+//declscope:package // analyzer.go loads it for each package
 func loadConfig() (Config, error) {
 	path := configPath
 
@@ -109,7 +114,7 @@ func loadConfig() (Config, error) {
 	}
 
 	switch config.Ignore.MissingReason {
-	case missingReasonOff, missingReasonError:
+	case configMissingReasonOff, configMissingReasonError:
 	default:
 		return Config{}, fmt.Errorf("parse config %q: ignore.missing-reason must be off or error", path)
 	}

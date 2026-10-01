@@ -6,13 +6,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"slices"
-	"strings"
 	"testing"
 )
 
-var diagnosticLine = regexp.MustCompile(`(?m)^(.+\.go):(\d+):\d+: (GOV\d{3}):`)
+var integrationDiagnosticLine = regexp.MustCompile(`(?m)^(.+\.go):(\d+):\d+: (GOV\d{3}):`)
 
 // TestIntegration builds the govo command and runs it both standalone and as
 // a go vet tool against the module in testdata/mod.
@@ -77,7 +75,7 @@ func TestIntegration(t *testing.T) {
 
 			slices.Sort(tc.want)
 
-			got := diagnostics(t, modDir, string(out))
+			got := integrationDiagnostics(t, modDir, string(out))
 			if exitCode != tc.exitCode || !slices.Equal(got, tc.want) {
 				t.Fatalf("%q exited with %d and reported %q; want %d and %q\noutput:\n%s", tc.command, exitCode, got, tc.exitCode, tc.want, out)
 			}
@@ -85,91 +83,14 @@ func TestIntegration(t *testing.T) {
 	}
 }
 
-// TestHelp checks that govo prints its own usage instead of the analysis
-// driver's, whose -tags description says the flag has no effect.
-func TestHelp(t *testing.T) {
-	_, bin := buildGovo(t)
-
-	for _, tc := range []struct {
-		name     string
-		args     []string
-		exitCode int
-		stdout   bool
-		message  string
-	}{
-		// go vet's usage refers users to both "govo help" and "govo -help".
-		{"help command", []string{"help"}, 0, true, ""},
-		{"help flag", []string{"-help"}, 0, false, ""},
-		{"short help flag", []string{"-h"}, 0, false, ""},
-		{"unknown flag", []string{"-bogus"}, 2, false, "flag provided but not defined: -bogus"},
-		{"invalid flag value", []string{"-c=many"}, 2, false, `invalid value "many" for flag -c: parse error`},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			cmd := exec.Command(bin, tc.args...)
-
-			var stdout, stderr strings.Builder
-
-			cmd.Stdout = &stdout
-			cmd.Stderr = &stderr
-			err := cmd.Run()
-
-			exitCode := 0
-			if exitErr := (*exec.ExitError)(nil); errors.As(err, &exitErr) {
-				exitCode = exitErr.ExitCode()
-			} else if err != nil {
-				t.Fatalf("run govo %q: %v", tc.args, err)
-			}
-
-			help, other := stderr.String(), stdout.String()
-			if tc.stdout {
-				help, other = other, help
-			}
-
-			if exitCode != tc.exitCode ||
-				!strings.HasPrefix(strings.TrimPrefix(help, tc.message+"\n"), usage) ||
-				!strings.Contains(help, tc.message) ||
-				strings.Contains(help, "no effect") ||
-				other != "" {
-				t.Fatalf("govo %q exited with %d\nstdout:\n%s\nstderr:\n%s", tc.args, exitCode, stdout.String(), stderr.String())
-			}
-		})
-	}
-}
-
-// buildGovo builds the command into a temporary directory and returns the
-// go command and the binary.
-func buildGovo(t *testing.T) (goCmd, bin string) {
-	t.Helper()
-
-	if testing.Short() {
-		t.Skip("builds the command and runs the go tool")
-	}
-
-	goCmd, err := exec.LookPath("go")
-	if err != nil {
-		t.Skipf("go command not found: %v", err)
-	}
-
-	bin = filepath.Join(t.TempDir(), "govo")
-	if runtime.GOOS == "windows" {
-		bin += ".exe"
-	}
-
-	if out, err := exec.Command(goCmd, "build", "-o", bin, ".").CombinedOutput(); err != nil {
-		t.Fatalf("go build: %v\n%s", err, out)
-	}
-
-	return goCmd, bin
-}
-
-// diagnostics returns the sorted "file:line: RULE" entries in output with
+// integrationDiagnostics returns the sorted "file:line: RULE" entries in output with
 // file names relative to dir.
-func diagnostics(t *testing.T, dir, output string) []string {
+func integrationDiagnostics(t *testing.T, dir, output string) []string {
 	t.Helper()
 
 	var got []string
 
-	for _, m := range diagnosticLine.FindAllStringSubmatch(output, -1) {
+	for _, m := range integrationDiagnosticLine.FindAllStringSubmatch(output, -1) {
 		file := m[1]
 		if filepath.IsAbs(file) {
 			rel, err := filepath.Rel(dir, file)
