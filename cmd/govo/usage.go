@@ -54,7 +54,7 @@ Rules, directives, and configuration: https://github.com/aqyuki/govo
 
 // printUsage writes govo's usage to w.
 //
-//declscope:package // main.go prints it for -help and "govo help"
+//declscope:shared // main.go prints it for -help and "govo help"
 func printUsage(w io.Writer) {
 	_, _ = fmt.Fprint(w, usage)
 }

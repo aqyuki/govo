@@ -10,7 +10,7 @@ import (
 // checkBinaryOperation checks the operands of b against the protected type
 // of the other operand.
 //
-//declscope:package // walk.go checks every binary expression with it
+//declscope:shared // walk.go checks every binary expression with it
 func (s *state) checkBinaryOperation(b *ast.BinaryExpr) {
 	if b.Op == token.SHL || b.Op == token.SHR {
 		// A shift count never takes the type of the shifted operand, and an
@@ -39,7 +39,7 @@ func (s *state) checkBinaryOperation(b *ast.BinaryExpr) {
 // value, so an untyped constant is a dimensionless scalar rather than a
 // value of the type, which a function with a scalar directive may use.
 //
-//declscope:package // walk.go checks compound assignments with it
+//declscope:shared // walk.go checks compound assignments with it
 func (s *state) checkOperationOperand(expr ast.Expr, target types.Type, scaling bool) {
 	p := s.protected(target)
 	if !scaling || p == nil || !s.untyped(expr) || s.pass.TypesInfo.Types[expr].Value == nil {
@@ -54,7 +54,7 @@ func (s *state) checkOperationOperand(expr ast.Expr, target types.Type, scaling 
 
 // checkIncDecOperation reports x++ and x--, which add the untyped constant 1 to x.
 //
-//declscope:package // walk.go checks every x++ and x-- with it
+//declscope:shared // walk.go checks every x++ and x-- with it
 func (s *state) checkIncDecOperation(stmt *ast.IncDecStmt) {
 	t := s.pass.TypesInfo.TypeOf(stmt.X)
 	if s.protected(t) == nil {
@@ -67,7 +67,7 @@ func (s *state) checkIncDecOperation(stmt *ast.IncDecStmt) {
 // checkSwitchOperation checks the case values of a switch on a protected
 // value, which are compared with it.
 //
-//declscope:package // walk.go checks every expression switch with it
+//declscope:shared // walk.go checks every expression switch with it
 func (s *state) checkSwitchOperation(sw *ast.SwitchStmt) {
 	if sw.Tag == nil {
 		return

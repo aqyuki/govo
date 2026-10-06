@@ -25,7 +25,7 @@ var Analyzer = newAnalyzer()
 // Rule IDs for protected types have the GOV prefix and rule IDs for
 // directives the GOVD prefix, so each category is numbered independently.
 //
-//declscope:package // every check reports under these IDs
+//declscope:shared // every check reports under these IDs
 const (
 	ruleConstruction = "GOV001"
 	//declscope:private
@@ -40,7 +40,7 @@ const (
 
 // knownRules lists the rule IDs that an ignore directive may name.
 //
-//declscope:package // ignore.go validates ignore directives against it
+//declscope:shared // ignore.go validates ignore directives against it
 var knownRules = []string{
 	ruleConstruction, ruleExtraction, ruleOperation,
 	ruleInvalidDirective, ruleUnusedIgnore, ruleMissingReason, ruleRedundantDirective,
@@ -70,7 +70,7 @@ type fileInfo struct {
 
 // state is the state of one analysis pass.
 //
-//declscope:package // the methods of every check are declared on it
+//declscope:shared // the methods of every check are declared on it
 type state struct {
 	pass     *analysis.Pass
 	config   Config
@@ -96,7 +96,7 @@ type state struct {
 // (factory or op) or extract (converter or op) with direct conversions, and
 // those that it may scale by untyped constants (scalar).
 //
-//declscope:package // directive.go grants it and the checks consult it
+//declscope:shared // directive.go grants it and the checks consult it
 type grant struct {
 	construct map[*protectedType]bool
 	extract   map[*protectedType]bool
@@ -105,7 +105,7 @@ type grant struct {
 
 // issue is a diagnostic waiting for ignore directives to be applied.
 //
-//declscope:package // ignore.go matches issues against ignore directives
+//declscope:shared // ignore.go matches issues against ignore directives
 type issue struct {
 	pos  token.Pos
 	rule string
@@ -178,7 +178,7 @@ func (s *state) reportIssues() {
 // report reports a diagnostic of rule at pos. The rule ID is the diagnostic's
 // category and also prefixes its message for plain-text output.
 //
-//declscope:package // ignore.go reports unused ignore directives through it
+//declscope:shared // ignore.go reports unused ignore directives through it
 func (s *state) report(pos token.Pos, rule, message string) {
 	s.pass.Report(analysis.Diagnostic{
 		Pos:      pos,
@@ -230,7 +230,7 @@ func externalModule(module *analysis.Module) bool {
 
 // skipFile reports whether diagnostics in f are left out.
 //
-//declscope:package // ignore.go leaves out unused ignores in the same files
+//declscope:shared // ignore.go leaves out unused ignores in the same files
 func (s *state) skipFile(f *ast.File) bool {
 	info := s.files[f]
 	if info.generated {
@@ -244,7 +244,7 @@ func (s *state) skipFile(f *ast.File) bool {
 // directly: in a function marked as a factory of p, or in a const
 // declaration in the file that declares p.
 //
-//declscope:package // the conversion checks consult it
+//declscope:shared // the conversion checks consult it
 func (s *state) mayConstruct(p *protectedType) bool {
 	if p.file != s.current {
 		return false
@@ -257,7 +257,7 @@ func (s *state) mayConstruct(p *protectedType) bool {
 // underlying representation of p directly: in a function marked as a
 // converter of p.
 //
-//declscope:package // the conversion checks consult it
+//declscope:shared // the conversion checks consult it
 func (s *state) mayExtract(p *protectedType) bool {
 	return p.file == s.current && s.grant != nil && s.grant.extract[p]
 }
@@ -266,21 +266,21 @@ func (s *state) mayExtract(p *protectedType) bool {
 // value of p by an untyped constant: in a function with a scalar directive
 // for p.
 //
-//declscope:package // operation.go consults it for scaled operands
+//declscope:shared // operation.go consults it for scaled operands
 func (s *state) mayScale(p *protectedType) bool {
 	return p.file == s.current && s.grant != nil && s.grant.scale[p]
 }
 
 // fileCursor returns the cursor of f in the inspector of the pass.
 //
-//declscope:package // ignore.go finds the target of an ignore directive in it
+//declscope:shared // ignore.go finds the target of an ignore directive in it
 func (s *state) fileCursor(f *ast.File) inspector.Cursor {
 	return s.files[f].cursor
 }
 
 // source returns the contents of f, reading the file at most once.
 //
-//declscope:package // ignore.go reads the line of an ignore directive
+//declscope:shared // ignore.go reads the line of an ignore directive
 func (s *state) source(f *ast.File) ([]byte, error) {
 	info := s.files[f]
 	if !info.srcLoaded {
@@ -299,7 +299,7 @@ func (s *state) source(f *ast.File) ([]byte, error) {
 // issue records a diagnostic, which reportIssues reports unless an ignore
 // directive suppresses it.
 //
-//declscope:package // every check records its diagnostics through it
+//declscope:shared // every check records its diagnostics through it
 func (s *state) issue(pos token.Pos, rule, msg string, f *ast.File) {
 	s.issues = append(s.issues, issue{pos: pos, rule: rule, message: msg, file: f})
 }
@@ -307,7 +307,7 @@ func (s *state) issue(pos token.Pos, rule, msg string, f *ast.File) {
 // constructionIssue reports a construction of the protected type t outside
 // its factories and points to the marker that permits it.
 //
-//declscope:package // conversions and composite literals construct values
+//declscope:shared // conversions and composite literals construct values
 func (s *state) constructionIssue(pos token.Pos, kind string, t types.Type) {
 	s.issue(pos, ruleConstruction, fmt.Sprintf("%s construction of protected type %s; use a //govo:%s function", kind, typeString(t), directiveFactory), s.current)
 }
@@ -315,7 +315,7 @@ func (s *state) constructionIssue(pos token.Pos, kind string, t types.Type) {
 // extractionIssue reports an extraction from the protected type t outside
 // its converters and points to the marker that permits it.
 //
-//declscope:package // conversion.go reports extractions
+//declscope:shared // conversion.go reports extractions
 func (s *state) extractionIssue(pos token.Pos, kind string, t types.Type) {
 	s.issue(pos, ruleExtraction, fmt.Sprintf("%s extraction from protected type %s; use a //govo:%s function", kind, typeString(t), directiveConverter), s.current)
 }
@@ -324,7 +324,7 @@ func (s *state) extractionIssue(pos token.Pos, kind string, t types.Type) {
 // that an alias denotes, with the type arguments of an instance and without
 // package qualifiers, as in Code or List[int].
 //
-//declscope:package // the checks name protected types in their diagnostics
+//declscope:shared // the checks name protected types in their diagnostics
 func typeString(t types.Type) string {
 	return types.TypeString(types.Unalias(t), func(*types.Package) string { return "" })
 }

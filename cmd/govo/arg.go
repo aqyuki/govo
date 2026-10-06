@@ -10,14 +10,14 @@ import (
 
 // errHelpArg reports a "govo help" invocation. go vet's usage refers users to it.
 //
-//declscope:package // main.go prints the usage for it
+//declscope:shared // main.go prints the usage for it
 var errHelpArg = errors.New("help requested")
 
 // prepareArgs adapts the command line for the singlechecker driver, which
 // owns parsing. It only locates package operands, extracts -tags for package
 // loading, and applies govo's CLI policy.
 //
-//declscope:package // main.go passes the result to the driver
+//declscope:shared // main.go passes the result to the driver
 func prepareArgs(args []string, analyzerFlags *flag.FlagSet) ([]string, string, error) {
 	if argsFromVet(args) {
 		return args, "", nil

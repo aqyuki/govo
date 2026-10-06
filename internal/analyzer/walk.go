@@ -28,7 +28,7 @@ var walkedNodes = []ast.Node{
 // walkFile checks the declarations of the file at file, each with the
 // permission that its markers grant.
 //
-//declscope:package // analyzer.go runs it for each file
+//declscope:shared // analyzer.go runs it for each file
 func (s *state) walkFile(file inspector.Cursor) {
 	for decl := range file.Children() {
 		if _, ok := decl.Node().(ast.Decl); !ok {

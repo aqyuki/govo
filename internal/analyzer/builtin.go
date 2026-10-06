@@ -12,7 +12,7 @@ import (
 // underlying type of the parameter. Other arguments, such as the value in
 // append(lists, codes), are converted as a whole and checked as usual.
 //
-//declscope:package // walk.go checks such arguments for untyped values only
+//declscope:shared // walk.go checks such arguments for untyped values only
 func builtinCopiesElements(builtin *types.Builtin, c *ast.CallExpr, i int) bool {
 	if builtin == nil {
 		return false
@@ -31,7 +31,7 @@ func builtinCopiesElements(builtin *types.Builtin, c *ast.CallExpr, i int) bool 
 // builtin returns the built-in function that fun denotes, if any, including
 // those of package unsafe.
 //
-//declscope:package // walk.go and untyped.go recognize built-in calls with it
+//declscope:shared // walk.go and untyped.go recognize built-in calls with it
 func (s *state) builtin(fun ast.Expr) *types.Builtin {
 	var id *ast.Ident
 

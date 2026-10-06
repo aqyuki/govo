@@ -33,13 +33,13 @@ type ignoreDirective struct {
 
 // ignoreList holds the ignore directives of a package.
 //
-//declscope:package // state holds the list
+//declscope:shared // state holds the list
 type ignoreList []*ignoreDirective
 
 // parseIgnore validates an ignore directive, whose rule IDs are ids, and
 // records it.
 //
-//declscope:package // directive.go hands ignore directives to it
+//declscope:shared // directive.go hands ignore directives to it
 func (s *state) parseIgnore(file *ast.File, comment *ast.Comment, ids, reason string) {
 	ignore := &ignoreDirective{
 		pos:      comment.Pos(),
@@ -168,7 +168,7 @@ func ignoreCandidates(parent inspector.Cursor, list edge.Kind) iter.Seq[inspecto
 // applyIgnores reports whether an ignore directive suppresses problem, and
 // records the use in every directive that does.
 //
-//declscope:package // analyzer.go asks it before reporting each issue
+//declscope:shared // analyzer.go asks it before reporting each issue
 func (s *state) applyIgnores(problem issue) bool {
 	suppressed := false
 
@@ -191,7 +191,7 @@ func (s *state) applyIgnores(problem issue) bool {
 // reportUnusedIgnores reports the ignore directives and rules that
 // suppressed nothing. It runs after every issue has been applied.
 //
-//declscope:package // analyzer.go runs it after reporting the issues
+//declscope:shared // analyzer.go runs it after reporting the issues
 func (s *state) reportUnusedIgnores() {
 	for i, ignore := range s.ignores {
 		if s.skipFile(ignore.file) {
@@ -219,7 +219,7 @@ func (s *state) reportUnusedIgnores() {
 // suppresses. Each ignore directive would suppress this diagnostic of the
 // others, so it is reported directly rather than as an issue.
 //
-//declscope:package // analyzer.go runs it before reporting the issues
+//declscope:shared // analyzer.go runs it before reporting the issues
 func (s *state) reportRedundantIgnores() {
 	for i, ignore := range s.ignores {
 		if s.skipFile(ignore.file) {
