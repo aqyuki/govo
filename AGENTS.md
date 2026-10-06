@@ -68,8 +68,8 @@ For documentation-only changes, check references, commands, and consistency with
 
 declscope treats each file as a namespace. `.declscope.yaml` enables the naming rule with `qualify: ondemand` and `exported: true`, so in a package with more than one namespace, each name carries its file's namespace (for example, `walkCall` in `walk.go` and `checkExplicitConversion` in `conversion.go`). Before adding, naming, or moving a declaration, read `.agents/skills/declscope-authoring/SKILL.md`.
 
-- Put a declaration in the file whose concern it is. When other files use it on purpose, write `//declscope:package // <who uses it and why>` on it.
-- `internal/analyzer/analyzer.go` is `//declscope:core`. Its shared declarations each state `//declscope:package`. Do not add a file-level `//declscope:package`.
+- Put a declaration in the file whose concern it is. When other files use it on purpose, write `//declscope:shared // <who uses it and why>` on it.
+- `internal/analyzer/analyzer.go` is `//declscope:core`. Its shared declarations each state `//declscope:shared`. Do not add a file-level `//declscope:shared`.
 - Do not export a name, use `//declscope:ignore`, or change `.declscope.yaml` just to make a report go away. Changes to `.declscope.yaml` need the repository owner's approval.
 
 ## Implementation requirements

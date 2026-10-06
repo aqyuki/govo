@@ -9,7 +9,7 @@ import (
 
 // checkExplicitConversion checks the explicit conversion c to dest.
 //
-//declscope:package // walk.go checks each conversion call with it
+//declscope:shared // walk.go checks each conversion call with it
 func (s *state) checkExplicitConversion(c *ast.CallExpr, dest types.Type) {
 	source := s.pass.TypesInfo.TypeOf(c.Args[0])
 
@@ -92,7 +92,7 @@ func (s *state) checkAliasingConversion(pos token.Pos, from, to types.Type) {
 
 // directConversionTo reports whether expr is an explicit conversion to target.
 //
-//declscope:package // walk.go accepts protected constants declared this way
+//declscope:shared // walk.go accepts protected constants declared this way
 func (s *state) directConversionTo(expr ast.Expr, target types.Type) bool {
 	call, ok := ast.Unparen(expr).(*ast.CallExpr)
 	if !ok {
@@ -106,7 +106,7 @@ func (s *state) directConversionTo(expr ast.Expr, target types.Type) bool {
 
 // checkImplicitConversion checks expr where its value is implicitly converted to target.
 //
-//declscope:package // walk.go and operation.go check implicitly converted values with it
+//declscope:shared // walk.go and operation.go check implicitly converted values with it
 func (s *state) checkImplicitConversion(expr ast.Expr, target types.Type, rule string) {
 	s.checkUntypedConversion(expr, target, rule)
 	s.checkAssignedConversion(expr.Pos(), s.pass.TypesInfo.TypeOf(expr), target)
@@ -115,7 +115,7 @@ func (s *state) checkImplicitConversion(expr ast.Expr, target types.Type, rule s
 // checkTupleConversion checks the values of a multi-valued expression, such as a
 // call or a comma-ok expression, where they are assigned to targets.
 //
-//declscope:package // walk.go checks multi-valued assignments, calls, and returns
+//declscope:shared // walk.go checks multi-valued assignments, calls, and returns
 func (s *state) checkTupleConversion(expr ast.Expr, targets []types.Type) {
 	tuple, ok := s.pass.TypesInfo.TypeOf(expr).(*types.Tuple)
 	if !ok {
@@ -153,7 +153,7 @@ func (s *state) checkAssignedConversion(pos token.Pos, source, target types.Type
 // checkUntypedConversion reports expr when it is untyped and target is a
 // protected type, so that its value becomes a value of that type.
 //
-//declscope:package // walk.go checks arguments that copy elements with it
+//declscope:shared // walk.go checks arguments that copy elements with it
 func (s *state) checkUntypedConversion(expr ast.Expr, target types.Type, rule string) {
 	p := s.protected(target)
 	if p == nil || !s.untyped(expr) {

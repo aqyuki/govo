@@ -8,7 +8,7 @@ import (
 
 // protectedFact marks a protected type for the packages that import it.
 //
-//declscope:package // analyzer.go declares it as the analyzer's fact type
+//declscope:shared // analyzer.go declares it as the analyzer's fact type
 type protectedFact struct{}
 
 func (*protectedFact) AFact() {}
@@ -16,7 +16,7 @@ func (*protectedFact) AFact() {}
 // protectedType is a type marked with //govo:protect, declared in this
 // package or imported.
 //
-//declscope:package // every check judges values against it
+//declscope:shared // every check judges values against it
 type protectedType struct {
 	name *types.TypeName
 	file *ast.File // nil for an imported protected type
@@ -24,7 +24,7 @@ type protectedType struct {
 
 // protectedTypes holds the protected types that a pass knows of.
 //
-//declscope:package // state holds it
+//declscope:shared // state holds it
 type protectedTypes struct {
 	// local holds the protected types declared in this package.
 	//
@@ -46,7 +46,7 @@ type protectedTypes struct {
 
 // newProtectedTypes returns an empty protectedTypes.
 //
-//declscope:package // analyzer.go creates the protectedTypes of each pass
+//declscope:shared // analyzer.go creates the protectedTypes of each pass
 func newProtectedTypes() protectedTypes {
 	return protectedTypes{
 		local:    make(map[*types.TypeName]*protectedType),
@@ -59,7 +59,7 @@ func newProtectedTypes() protectedTypes {
 // collectProtect records the protected types that f declares, and exports a
 // fact for each.
 //
-//declscope:package // analyzer.go collects every file before the checks run
+//declscope:shared // analyzer.go collects every file before the checks run
 func (s *state) collectProtect(f *ast.File) {
 	for _, decl := range f.Decls {
 		gd, ok := decl.(*ast.GenDecl)
@@ -142,7 +142,7 @@ func protectableUnderlying(t types.Type) bool {
 
 // protected returns the protected type that t names, or nil.
 //
-//declscope:package // every check asks it whether a type is protected
+//declscope:shared // every check asks it whether a type is protected
 func (s *state) protected(t types.Type) *protectedType {
 	if t == nil {
 		return nil
@@ -179,14 +179,14 @@ func (s *state) protected(t types.Type) *protectedType {
 // protectAttached reports whether comment is a //govo:protect directive
 // attached to a type declaration.
 //
-//declscope:package // directive.go reports protect directives attached to nothing
+//declscope:shared // directive.go reports protect directives attached to nothing
 func (s *state) protectAttached(comment *ast.Comment) bool {
 	return s.protects.comments[comment]
 }
 
 // protectedIn returns the protected types declared in f.
 //
-//declscope:package // directive.go resolves the type names of markers in it
+//declscope:shared // directive.go resolves the type names of markers in it
 func (s *state) protectedIn(f *ast.File) []*protectedType {
 	return s.protects.byFile[f]
 }

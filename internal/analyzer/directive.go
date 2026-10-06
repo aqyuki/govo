@@ -13,7 +13,7 @@ const directivePrefix = "//govo:"
 
 // Commands of //govo: directives.
 //
-//declscope:package // protect.go finds protect, and diagnostics name the markers
+//declscope:shared // protect.go finds protect, and diagnostics name the markers
 const (
 	directiveProtect   = "protect"
 	directiveFactory   = "factory"
@@ -28,7 +28,7 @@ const (
 // parseDirective splits a //govo: comment into its command, its arguments,
 // and the reason that follows them in the golangci-lint "// reason" form.
 //
-//declscope:package // protect.go finds protect directives with it
+//declscope:shared // protect.go finds protect directives with it
 func parseDirective(text string) (command, args, reason string, ok bool) {
 	body, ok := strings.CutPrefix(text, directivePrefix)
 	if !ok {
@@ -49,7 +49,7 @@ func parseDirective(text string) (command, args, reason string, ok bool) {
 // collectDirectives validates the directives of f and records the
 // permissions and ignore directives they declare.
 //
-//declscope:package // analyzer.go runs it for each file
+//declscope:shared // analyzer.go runs it for each file
 func (s *state) collectDirectives(f *ast.File) {
 	// A scalar directive depends on the factory permission that the markers
 	// of its function grant, wherever they appear in the doc comment.

@@ -12,7 +12,7 @@ import (
 // Besides untyped constants, comparisons and shifts of untyped constants by
 // non-constant counts produce untyped values.
 //
-//declscope:package // the checks of operands and conversions consult it
+//declscope:shared // the checks of operands and conversions consult it
 func (s *state) untyped(expr ast.Expr) bool {
 	if _, ok := s.pass.TypesInfo.Types[expr]; !ok {
 		return false

@@ -37,7 +37,7 @@ type IgnoreConfig struct {
 // Values accepted by ignore.missing-reason.
 const (
 	configMissingReasonOff = "off"
-	//declscope:package // ignore.go reports ignore directives without a reason
+	//declscope:shared // ignore.go reports ignore directives without a reason
 	configMissingReasonError = "error"
 )
 
@@ -47,7 +47,7 @@ var configPath string
 // Keeping the flag on Analyzer.Flags lets both the standalone command and
 // go vet -vettool pass it through the analysis driver.
 //
-//declscope:package // analyzer.go registers it on Analyzer
+//declscope:shared // analyzer.go registers it on Analyzer
 func registerConfigFlag(flags *flag.FlagSet) {
 	flags.StringVar(&configPath, "config", "", "path to a govo YAML configuration file")
 }
@@ -87,7 +87,7 @@ var (
 // The result, or the error, is cached by the resolved absolute path, so
 // resolution is unaffected by the cache.
 //
-//declscope:package // analyzer.go loads it for each package
+//declscope:shared // analyzer.go loads it for each package
 func loadConfig() (Config, error) {
 	path := configPath
 

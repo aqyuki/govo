@@ -10,7 +10,7 @@ import (
 // buildGovo builds the command into a temporary directory and returns the
 // go command and the binary.
 //
-//declscope:package // integration_test.go and usage_test.go run the binary
+//declscope:shared // integration_test.go and usage_test.go run the binary
 func buildGovo(t *testing.T) (goCmd, bin string) {
 	t.Helper()
 
