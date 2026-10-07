@@ -117,24 +117,14 @@ jobs:
   test:
     needs:
       - gomod
-    name: test (Go ${{ matrix.go }})
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # The minimum version from go.mod and the next release. go vet
-        # passes different module information to vet tools in each.
-        include:
-          - go: "1.26"
-            coverage: true
-          - go: "1.27"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - id: setup-go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ${{ matrix.go }}
+          go-version-file: go.mod
           cache: false
 
       - name: Cache Go modules and build outputs
@@ -150,7 +140,7 @@ jobs:
 
       - name: Run tests
         env:
-          # Use the Go version selected by the matrix, not a toolchain switch.
+          # Use the Go version selected by setup-go, not a toolchain switch.
           GOTOOLCHAIN: local
         run: go test ./... -covermode=atomic -coverprofile=coverage.out
 
@@ -160,7 +150,6 @@ jobs:
         run: go vet ./...
 
       - name: Upload coverage report
-        if: matrix.coverage
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage
