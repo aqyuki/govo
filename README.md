@@ -59,7 +59,7 @@ Choose one of the following installation methods:
 
 | Method | Command                                             | Requirements                             |
 | ------ | --------------------------------------------------- | ---------------------------------------- |
-| Go     | `go install github.com/aqyuki/govo/cmd/govo@latest` | Go 1.26.0 or later                       |
+| Go     | `go install github.com/aqyuki/govo/cmd/govo@latest` | Go 1.27.0 or later                       |
 | mise   | `mise use -g github:aqyuki/govo@latest`             | mise; a release binary for your platform |
 
 The mise command installs a release binary and adds govo to your global mise configuration. With mise activated in your shell, run:
@@ -310,7 +310,7 @@ mise exec -- declscope shrink ./...
 mise exec -- declscope ./...
 ```
 
-`golangci-lint run` checks the standard linters plus `modernize` and `wsl_v5`, and also reports formatting differences from gofmt, goimports, gofumpt, and gci. `golangci-lint fmt` applies those formatters. `go test ./...` includes integration tests that build govo and run it both standalone and through `go vet -vettool`; use `go test -short ./...` to skip them. [declscope](https://github.com/mpyw/declscope) checks that each declaration is used only where its scope allows, with each file as a namespace, and that names carry their file's namespace. `.declscope.yaml` configures it. Run `declscope shrink` before `declscope`. CI runs the tests and `go vet ./...` with both Go 1.26 and Go 1.27, `golangci-lint run`, and both declscope commands on pull requests.
+`golangci-lint run` checks the standard linters plus `modernize` and `wsl_v5`, and also reports formatting differences from gofmt, goimports, gofumpt, and gci. `golangci-lint fmt` applies those formatters. `go test ./...` includes integration tests that build govo and run it both standalone and through `go vet -vettool`; use `go test -short ./...` to skip them. [declscope](https://github.com/mpyw/declscope) checks that each declaration is used only where its scope allows, with each file as a namespace, and that names carry their file's namespace. `.declscope.yaml` configures it. Run `declscope shrink` before `declscope`. CI runs the tests, `go vet ./...`, `golangci-lint run`, and both declscope commands on pull requests using only Go 1.27, as specified in `go.mod`.
 
 ## License
 

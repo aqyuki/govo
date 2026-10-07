@@ -206,4 +206,4 @@ Only types marked with `//govo:protect` are protected. There is no separate base
 
 Generated Go files, packages under `vendor`, packages from external modules, and the standard library are excluded from analysis. Generated files are identified with `go/ast.IsGenerated`, which recognizes the standard Go `// Code generated ... DO NOT EDIT.` comment before the package clause. A package is treated as vendored when its directory is `vendor/<import path>`, so a main-module package that merely has a directory named `vendor` in its path is still analyzed. A protected type, exported or not, declared in a dependency package within the same module is also recognized as protected at its use sites. A type marked with `//govo:protect` in an external module is not recognized as protected at its use sites.
 
-With `go.work`, multiple modules treated as main modules may be analyzed. Under Go 1.26, `go vet -vettool` may also analyze an unversioned module outside the main module.
+With `go.work`, multiple modules treated as main modules may be analyzed.
