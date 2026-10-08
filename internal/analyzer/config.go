@@ -13,16 +13,6 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// rawConfig mirrors the YAML file. Pointers distinguish omitted keys.
-type rawConfig struct {
-	Tests  *bool           `yaml:"tests"`
-	Ignore rawIgnoreConfig `yaml:"ignore"`
-}
-
-type rawIgnoreConfig struct {
-	MissingReason *string `yaml:"missing-reason"`
-}
-
 // Config controls diagnostics emitted by the analyzer.
 type Config struct {
 	Tests  bool
@@ -32,6 +22,16 @@ type Config struct {
 // IgnoreConfig controls diagnostics about ignore directives.
 type IgnoreConfig struct {
 	MissingReason string
+}
+
+// rawConfig mirrors the YAML file. Pointers distinguish omitted keys.
+type rawConfig struct {
+	Tests  *bool           `yaml:"tests"`
+	Ignore rawIgnoreConfig `yaml:"ignore"`
+}
+
+type rawIgnoreConfig struct {
+	MissingReason *string `yaml:"missing-reason"`
 }
 
 // Values accepted by ignore.missing-reason.

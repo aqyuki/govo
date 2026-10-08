@@ -13,6 +13,11 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 )
 
+// ignoreList holds the ignore directives of a package.
+//
+//declscope:shared // state holds the list
+type ignoreList []*ignoreDirective
+
 // ignoreDirective is a //govo:ignore directive and the rules it suppressed.
 type ignoreDirective struct {
 	pos      token.Pos
@@ -30,11 +35,6 @@ type ignoreDirective struct {
 	reason   string
 	file     *ast.File
 }
-
-// ignoreList holds the ignore directives of a package.
-//
-//declscope:shared // state holds the list
-type ignoreList []*ignoreDirective
 
 // parseIgnore validates an ignore directive, whose rule IDs are ids, and
 // records it.
