@@ -9,8 +9,6 @@ import (
 	"unicode"
 )
 
-const directivePrefix = "//govo:"
-
 // Commands of //govo: directives.
 //
 //declscope:shared // protect.go finds protect, and diagnostics name the markers
@@ -24,6 +22,8 @@ const (
 	//declscope:private
 	directiveIgnore = "ignore"
 )
+
+const directivePrefix = "//govo:"
 
 // parseDirective splits a //govo: comment into its command, its arguments,
 // and the reason that follows them in the golangci-lint "// reason" form.

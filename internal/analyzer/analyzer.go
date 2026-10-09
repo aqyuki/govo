@@ -59,15 +59,6 @@ func newAnalyzer() *analysis.Analyzer {
 	return a
 }
 
-type fileInfo struct {
-	name      string
-	generated bool
-	cursor    inspector.Cursor
-	src       []byte
-	srcErr    error
-	srcLoaded bool
-}
-
 // state is the state of one analysis pass.
 //
 //declscope:shared // the methods of every check are declared on it
@@ -112,6 +103,15 @@ type issue struct {
 	file *ast.File
 	//declscope:private
 	message string
+}
+
+type fileInfo struct {
+	name      string
+	generated bool
+	cursor    inspector.Cursor
+	src       []byte
+	srcErr    error
+	srcLoaded bool
 }
 
 func run(pass *analysis.Pass) (any, error) {
