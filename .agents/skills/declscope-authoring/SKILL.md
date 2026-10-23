@@ -4,7 +4,7 @@ description: "Write or change Go code in a repository that runs declscope, which
 license: MIT
 x-embedded-by: declscope
 x-embedded-version: 0.23.1
-x-embedded-at: "2026-10-23T23:03:18Z"
+x-embedded-at: "2026-10-23T23:05:09Z"
 x-embedded-digest: "sha256:425854740ea70cf3e71f7d03dda2d94e603ab0b97e474bf9a6fa1efcd8fc317b"
 ---
 

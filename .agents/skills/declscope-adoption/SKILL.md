@@ -4,7 +4,7 @@ description: Adopt declscope on an existing Go codebase and drive its diagnostic
 license: MIT
 x-embedded-by: declscope
 x-embedded-version: 0.23.1
-x-embedded-at: "2026-10-23T23:03:18Z"
+x-embedded-at: "2026-10-23T23:05:09Z"
 x-embedded-digest: "sha256:a16770770be4ef1fde6d1aa199b22094dda1eb153a7ede2f7d6d1e852128b1c9"
 ---
 
