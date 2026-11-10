@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 )
 
 // Config controls diagnostics emitted by the analyzer.
