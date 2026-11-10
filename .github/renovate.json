@@ -13,6 +13,7 @@
   "automerge": false,
   "automergeType": "pr",
   "ignoreTests": false,
+  "postUpdateOptions": ["gomodUpdateImportPaths", "gomodTidy"],
   "packageRules": [
     {
       "description": "Do not raise the minimum Go version automatically",
