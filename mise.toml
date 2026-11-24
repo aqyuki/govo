@@ -1,6 +1,6 @@
 [tools]
 node = "26.13.1"
-pnpm = "12.18.0"
+pnpm = "12.23.0"
 golangci-lint = "2.15.0"
 goreleaser = "2.20.3"
-"github:mpyw/declscope" = "0.24.5"
+"github:mpyw/declscope" = "0.26.0"
